@@ -1,107 +1,91 @@
 const express = require('express');
 const cors = require('cors');
-const nodemailer = require('nodemailer');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '15mb' }));
 app.use(express.static(__dirname));
 
 let reports = [];
-const verificationCodes = {};
 
-// Nodemailer Transporter Setup
-const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-        user: 'your-email@gmail.com',         // Replace with your email
-        pass: 'your-email-app-password'       // Replace with your Gmail App Password
-    }
-});
+// Helper to calculate distance in meters between two lat/lng points
+function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
+    const R = 6371000; // Radius of earth in meters
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
 
-// Email Verification: Send OTP
-app.post('/api/auth/send-verification', async (req, res) => {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email is required' });
-
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    verificationCodes[email] = { otp, expires: Date.now() + 10 * 60 * 1000 };
-
-    try {
-        await transporter.sendMail({
-            from: '"RoadGuard AI" <your-email@gmail.com>',
-            to: email,
-            subject: 'RoadGuard AI - Email Verification Code',
-            text: `Your verification code is: ${otp}. Valid for 10 minutes.`
-        });
-        res.json({ success: true, message: 'Verification code sent successfully!' });
-    } catch (err) {
-        console.error('Email send error:', err);
-        res.status(500).json({ error: 'Failed to send email. Check SMTP credentials.' });
-    }
-});
-
-// Email Verification: Verify OTP
-app.post('/api/auth/verify-code', (req, res) => {
-    const { email, code } = req.body;
-    const record = verificationCodes[email];
-
-    if (!record) return res.status(400).json({ error: 'No verification request found.' });
-    if (Date.now() > record.expires) {
-        delete verificationCodes[email];
-        return res.status(400).json({ error: 'Verification code has expired.' });
-    }
-
-    if (record.otp === code) {
-        delete verificationCodes[email];
-        res.json({ success: true, message: 'Email verified successfully!' });
-    } else {
-        res.status(400).json({ error: 'Invalid verification code.' });
-    }
-});
-
-// Get Pending Reports for Admin
+// Get all reports for Admin review (sorted by severity)
 app.get('/api/reports', (req, res) => {
     res.json(reports);
 });
 
-// Get Public Reports (Excludes 'pending', shows Approved, Under Construction, Resolved)
+// Get Public Reports (approved, under-construction, completed)
 app.get('/api/reports/public', (req, res) => {
     res.json(reports.filter(r => r.status !== 'pending'));
 });
 
-// Submit Report from Edge AI App (with Proximity Check)
-app.post('/api/reports', (req, res) => {
-    const { contributor_email, latitude, longitude, severity, image_base64 } = req.body;
+// Submit Report from Contributor Edge AI (with Spatial Deduplication)
+app.post('/api/reports', async (req, res) => {
+    const { contributor_name, contributor_phone, latitude, longitude, severity, damage_type, image_base64 } = req.body;
+    
     if (!latitude || !longitude || !image_base64) {
-        return res.status(400).json({ success: false, error: 'Missing required report fields.' });
+        return res.status(400).json({ success: false, error: 'Missing GPS or image payload.' });
     }
 
-    // Proximity check (~10m duplicate prevention)
+    const lat = parseFloat(latitude);
+    const lon = parseFloat(longitude);
+
+    // Spatial Deduplication: Check if an unresolved report exists within 25 meters
     const duplicate = reports.find(r => 
-        r.status !== 'resolved' &&
-        Math.abs(r.latitude - latitude) < 0.0001 &&
-        Math.abs(r.longitude - longitude) < 0.0001
+        r.status !== 'completed' &&
+        getDistanceFromLatLonInMeters(r.latitude, r.longitude, lat, lon) < 25
     );
 
     if (duplicate) {
-        return res.json({ success: false, message: 'Report already exists nearby. Ignored duplicate.' });
+        return res.json({ 
+            success: false, 
+            duplicate: true, 
+            message: 'Duplicate report ignored: A road issue was already reported nearby.' 
+        });
+    }
+
+    // Reverse geocode road/location name using OpenStreetMap Nominatim
+    let locationName = 'Unknown Road / Area';
+    try {
+        const fetch = (await import('node-fetch')).default;
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+        const geoData = await geoRes.json();
+        if (geoData && geoData.display_name) {
+            locationName = geoData.display_name;
+        }
+    } catch (e) {
+        console.log('Reverse geocode fallback used');
     }
 
     const newReport = {
-        id: Date.now().toString(),
-        contributor_email: contributor_email || 'anonymous@roadguard.local',
-        latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude),
+        id: 'rep_' + Date.now(),
+        contributor_name: contributor_name || 'Anonymous',
+        contributor_phone: contributor_phone || 'N/A',
+        latitude: lat,
+        longitude: lon,
+        location_name: locationName,
         severity: severity || 'Medium',
+        damage_type: damage_type || 'Road Damage',
         image_base64,
-        status: 'pending',
+        status: 'pending', // pending, under-construction, completed
         timestamp: new Date().toISOString()
     };
 
-    reports.push(newReport);
-    res.json({ success: true, message: 'Report submitted successfully and sent to Admin!' });
+    reports.unshift(newReport);
+    res.json({ success: true, message: 'Report successfully submitted to Admin queue!' });
 });
 
 // Admin Update Report Status
@@ -116,4 +100,4 @@ app.patch('/api/reports/:id', (req, res) => {
     res.json({ success: true, message: `Report status updated to ${status}` });
 });
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`RoadGuard server running on port ${PORT}`));
