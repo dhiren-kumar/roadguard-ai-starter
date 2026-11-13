@@ -2,19 +2,22 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RoadGuard AI - Login</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #f1f5f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        body { font-family: Arial, sans-serif; background: #f1f5f9; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 15px; box-sizing: border-box; }
         .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        .tabs { display: flex; margin-bottom: 1rem; border-bottom: 2px solid #e2e8f0; }
+        .tabs { display: flex; margin-bottom: 1.2rem; border-bottom: 2px solid #e2e8f0; }
         .tab { flex: 1; padding: 0.75rem; text-align: center; cursor: pointer; font-weight: bold; color: #64748b; }
         .tab.active { color: #3b82f6; border-bottom: 2px solid #3b82f6; margin-bottom: -2px; }
         .group { margin-bottom: 1rem; }
         label { display: block; margin-bottom: 0.4rem; font-size: 0.875rem; color: #334155; }
-        input { width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
-        button { width: 100%; background: #3b82f6; color: white; border: none; padding: 0.75rem; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        input { width: 100%; padding: 0.6rem; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; background: #3b82f6; color: white; border: none; padding: 0.75rem; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1rem; }
         button:hover { background: #2563eb; }
-        .switch { text-align: center; margin-top: 1rem; font-size: 0.875rem; color: #64748b; cursor: pointer; }
+        .switch { text-align: center; margin-top: 1rem; font-size: 0.875rem; color: #3b82f6; cursor: pointer; }
+        .back-link { display: block; text-align: center; margin-top: 0.75rem; font-size: 0.85rem; color: #64748b; text-decoration: none; }
+        .hint { background: #eff6ff; border: 1px solid #bfdbfe; padding: 8px; border-radius: 4px; font-size: 0.8rem; color: #1e40af; margin-bottom: 1rem; display: none; }
     </style>
 </head>
 <body>
@@ -23,17 +26,22 @@
             <div class="tab active" id="tabContributor" onclick="setRole('contributor')">Contributor</div>
             <div class="tab" id="tabAdmin" onclick="setRole('admin')">Admin</div>
         </div>
-        <h3 id="title">Contributor Login</h3>
+        <h3 id="title" style="margin-top:0;">Contributor Login</h3>
+        <div class="hint" id="adminHint">Demo Admin: <b>admin@roadguard.com</b> | Pass: <b>admin123</b></div>
+
         <form id="form" onsubmit="submitForm(event)">
             <input type="hidden" id="role" value="contributor">
-            <div class="group" id="nameBox" style="display:none;"><label>Name</label><input type="text" id="name"></div>
-            <div class="group"><label>Email</label><input type="email" id="email" required></div>
-            <div class="group"><label>Password</label><input type="password" id="password" required></div>
-            <div class="group" id="locationBox" style="display:none;"><label>Location / City</label><input type="text" id="location"></div>
+            <div class="group" id="nameBox" style="display:none;"><label>Full Name</label><input type="text" id="name" placeholder="e.g. Raja"></div>
+            <div class="group"><label>Email</label><input type="email" id="email" required placeholder="you@example.com"></div>
+            <div class="group"><label>Password</label><input type="password" id="password" required placeholder="••••••••"></div>
+            <div class="group" id="locationBox" style="display:none;"><label>Location / City</label><input type="text" id="location" placeholder="e.g. Keonjhar"></div>
             <button type="submit" id="btn">Login</button>
         </form>
+
         <div class="switch" id="toggleText" onclick="toggleMode()">Need an account? Register</div>
+        <a href="index.html" class="back-link">← Back to Public Map</a>
     </div>
+
     <script>
         let isLogin = true;
         let role = 'contributor';
@@ -48,55 +56,84 @@
                 document.getElementById('toggleText').style.display = 'none';
                 document.getElementById('nameBox').style.display = 'none';
                 document.getElementById('locationBox').style.display = 'none';
+                document.getElementById('adminHint').style.display = 'block';
                 document.getElementById('title').innerText = 'Admin Login';
                 document.getElementById('btn').innerText = 'Login as Admin';
             } else {
                 document.getElementById('tabContributor').classList.add('active');
                 document.getElementById('tabAdmin').classList.remove('active');
                 document.getElementById('toggleText').style.display = 'block';
+                document.getElementById('adminHint').style.display = 'none';
                 document.getElementById('title').innerText = isLogin ? 'Contributor Login' : 'Contributor Registration';
-                document.getElementById('btn').innerText = isLogin ? 'Login' : 'Register';
+                document.getElementById('btn').innerText = isLogin ? 'Login' : 'Register & Verify Email';
             }
         }
 
         function toggleMode() {
             isLogin = !isLogin;
             document.getElementById('title').innerText = isLogin ? 'Contributor Login' : 'Contributor Registration';
-            document.getElementById('btn').innerText = isLogin ? 'Login' : 'Register';
+            document.getElementById('btn').innerText = isLogin ? 'Login' : 'Register & Verify Email';
             document.getElementById('toggleText').innerText = isLogin ? 'Need an account? Register' : 'Have an account? Login';
             document.getElementById('nameBox').style.display = isLogin ? 'none' : 'block';
             document.getElementById('locationBox').style.display = isLogin ? 'none' : 'block';
+            document.getElementById('name').required = !isLogin;
+            document.getElementById('location').required = !isLogin;
         }
 
-        async function submitForm(e) {
+        function submitForm(e) {
             e.preventDefault();
-            const email = document.getElementById('email').value;
+            const email = document.getElementById('email').value.trim().toLowerCase();
             const password = document.getElementById('password').value;
 
+            // Admin Authentication
+            if (role === 'admin') {
+                if (email === 'admin@roadguard.com' && password === 'admin123') {
+                    localStorage.setItem('rg_currentUser', JSON.stringify({ name: 'System Admin', email, role: 'admin' }));
+                    window.location.href = 'admin.html';
+                } else {
+                    alert('Invalid Admin credentials. Use admin@roadguard.com / admin123');
+                }
+                return;
+            }
+
+            // Contributor Authentication & Registration
+            let users = JSON.parse(localStorage.getItem('rg_users') || '[]');
+
             if (isLogin) {
-                const res = await fetch('http://localhost:5000/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password, role })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    localStorage.setItem('user', JSON.stringify(data.user));
-                    window.location.href = data.user.role === 'admin' ? 'admin.html' : 'dashboard.html';
-                } else { alert(data.error); }
+                const user = users.find(u => u.email === email && u.password === password);
+                if (!user) {
+                    alert('Account not found or wrong password. Please register first.');
+                    return;
+                }
+                if (!user.verified) {
+                    alert('Email not verified!');
+                    return;
+                }
+                localStorage.setItem('rg_currentUser', JSON.stringify(user));
+                window.location.href = 'dashboard.html';
             } else {
-                const name = document.getElementById('name').value;
-                const location = document.getElementById('location').value;
-                const res = await fetch('http://localhost:5000/api/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, email, password, location, role: 'contributor' })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    alert('Registration complete! Please log in.');
+                if (users.some(u => u.email === email)) {
+                    alert('This email is already registered. Switch to Login.');
                     toggleMode();
-                } else { alert(data.error); }
+                    return;
+                }
+                const name = document.getElementById('name').value.trim();
+                const location = document.getElementById('location').value.trim();
+
+                // Simulate Email Verification Code
+                const code = Math.floor(1000 + Math.random() * 9000);
+                const entered = prompt(`Verification code sent to ${email}: [ ${code} ]\n\nEnter the 4-digit code to verify your email:`);
+                if (entered !== String(code)) {
+                    alert('Verification failed. Please try registering again.');
+                    return;
+                }
+
+                const newUser = { name, email, password, location, role: 'contributor', verified: true };
+                users.push(newUser);
+                localStorage.setItem('rg_users', JSON.stringify(users));
+                localStorage.setItem('rg_currentUser', JSON.stringify(newUser));
+                alert('Email verified & registration complete!');
+                window.location.href = 'dashboard.html';
             }
         }
     </script>
