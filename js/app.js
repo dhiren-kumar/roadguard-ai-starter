@@ -10,6 +10,8 @@ const BACKEND_URL = "http://localhost:5000";
 
 const $ = (id) => document.getElementById(id);
 
+const API_BASE = "https://roadguard-ai-starter-1.onrender.com/";
+
 let stream = null;
 let gps = null;
 let capturedImage = "";
