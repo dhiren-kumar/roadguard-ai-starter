@@ -84,7 +84,7 @@
         }
 
         function searchLocation() {
-            const query = document.getElementById('searchInput'].value;
+            const query = document.getElementById('searchInput').value;
             if (!query) return;
             fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`)
                 .then(res => res.json())
