@@ -12,13 +12,15 @@
         .map-btn { background: #0f172a; color: white; }
         .logout-btn { background: #ef4444; color: white; }
         .table-wrap { overflow-x: auto; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
-        table { width: 100%; border-collapse: collapse; min-width: 650px; }
+        table { width: 100%; border-collapse: collapse; min-width: 800px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.875rem; }
         th { background: #0f172a; color: white; }
         img { width: 80px; height: 60px; object-fit: cover; border-radius: 4px; }
         select, button.save-btn { padding: 0.45rem; border-radius: 4px; border: 1px solid #cbd5e1; }
         button.save-btn { background: #3b82f6; color: white; border: none; cursor: pointer; font-weight: bold; }
         button.save-btn:hover { background: #2563eb; }
+        .loc-badge { font-weight: 600; color: #0f172a; display: block; margin-bottom: 2px; }
+        .coords-sub { color: #64748b; font-size: 0.78rem; }
     </style>
 </head>
 <body>
@@ -37,7 +39,7 @@
                     <th>ID</th>
                     <th>Photo</th>
                     <th>Contributor</th>
-                    <th>Coordinates</th>
+                    <th>Location (Country / City / Area)</th>
                     <th>Severity</th>
                     <th>Status</th>
                     <th>Action</th>
@@ -48,56 +50,99 @@
     </div>
 
     <script>
-        const user = JSON.parse(localStorage.getItem('rg_currentUser'));
+        const user = JSON.parse(localStorage.getItem('user'));
         if (!user || user.role !== 'admin') {
             window.location.href = 'login.html';
         }
 
-        function loadAdmin() {
-            const reports = JSON.parse(localStorage.getItem('rg_reports') || '[]');
-            const tbl = document.getElementById('tbl');
-            tbl.innerHTML = '';
+        // Cache reverse-geocoded locations by coordinate key
+        const locationCache = {};
 
-            if (reports.length === 0) {
-                tbl.innerHTML = '<tr><td colspan="7" style="text-align:center;">No reports submitted yet.</td></tr>';
-                return;
+        async function getFormattedLocation(lat, lng) {
+            const key = `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`;
+            if (locationCache[key]) return locationCache[key];
+
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`);
+                const data = await res.json();
+                const addr = data.address || {};
+
+                const country = addr.country || 'India';
+                const cityOrDistrict = addr.city || addr.town || addr.state_district || addr.county || addr.state || 'Unknown City';
+                const localArea = addr.suburb || addr.neighbourhood || addr.village || addr.road || addr.hamlet || 'Local Area';
+
+                const formatted = `${country} / ${cityOrDistrict} / ${localArea}`;
+                locationCache[key] = formatted;
+                return formatted;
+            } catch (err) {
+                return 'Location lookup unavailable';
             }
-
-            reports.forEach(r => {
-                tbl.innerHTML += `
-                    <tr>
-                        <td>#${String(r.id).slice(-4)}</td>
-                        <td><img src="${r.image_base64}" alt="Road"></td>
-                        <td>${r.contributor_email}<br><small style="color:#64748b;">${r.timestamp}</small></td>
-                        <td>${Number(r.latitude).toFixed(4)}, ${Number(r.longitude).toFixed(4)}</td>
-                        <td><b>${r.severity}</b></td>
-                        <td>
-                            <select id="st_${r.id}">
-                                <option value="pending" ${r.status==='pending'?'selected':''}>Pending Approval</option>
-                                <option value="approved" ${r.status==='approved'?'selected':''}>Approved (Show on Map)</option>
-                                <option value="under-construction" ${r.status==='under-construction'?'selected':''}>Under Construction</option>
-                                <option value="resolved" ${r.status==='resolved'?'selected':''}>Resolved</option>
-                            </select>
-                        </td>
-                        <td><button class="save-btn" onclick="updateStatus(${r.id})">Save</button></td>
-                    </tr>`;
-            });
         }
 
-        function updateStatus(id) {
+        async function loadAdmin() {
+            try {
+                const res = await fetch('/api/reports/admin');
+                const reports = await res.json();
+                const tbl = document.getElementById('tbl');
+                tbl.innerHTML = '';
+
+                if (reports.length === 0) {
+                    tbl.innerHTML = '<tr><td colspan="7" style="text-align:center;">No reports found.</td></tr>';
+                    return;
+                }
+
+                reports.forEach(r => {
+                    tbl.innerHTML += `
+                        <tr>
+                            <td>#${String(r.id).slice(-4)}</td>
+                            <td><img src="${r.image_base64}" alt="Road"></td>
+                            <td>${r.contributor_email}<br><small style="color:#64748b;">${r.timestamp}</small></td>
+                            <td>
+                                <span class="loc-badge" id="loc_${r.id}">Resolving location...</span>
+                                <span class="coords-sub">${Number(r.latitude).toFixed(4)}, ${Number(r.longitude).toFixed(4)}</span>
+                            </td>
+                            <td><b>${r.severity}</b></td>
+                            <td>
+                                <select id="st_${r.id}">
+                                    <option value="pending" ${r.status==='pending'?'selected':''}>Pending</option>
+                                    <option value="approved" ${r.status==='approved'?'selected':''}>Approved</option>
+                                    <option value="under-construction" ${r.status==='under-construction'?'selected':''}>Under Construction</option>
+                                    <option value="resolved" ${r.status==='resolved'?'selected':''}>Resolved</option>
+                                </select>
+                            </td>
+                            <td><button class="save-btn" onclick="updateStatus(${r.id})">Save</button></td>
+                        </tr>`;
+                });
+
+                // Resolve human-readable location names asynchronously for each row
+                for (const r of reports) {
+                    const locText = await getFormattedLocation(r.latitude, r.longitude);
+                    const el = document.getElementById(`loc_${r.id}`);
+                    if (el) el.innerText = locText;
+                }
+            } catch (err) {
+                console.error('Failed to load admin reports:', err);
+            }
+        }
+
+        async function updateStatus(id) {
             const newStatus = document.getElementById(`st_${id}`).value;
-            let reports = JSON.parse(localStorage.getItem('rg_reports') || '[]');
-            const idx = reports.findIndex(r => r.id === id);
-            if (idx !== -1) {
-                reports[idx].status = newStatus;
-                localStorage.setItem('rg_reports', JSON.stringify(reports));
-                alert(`Report updated to "${newStatus}".`);
+            try {
+                const res = await fetch(`/api/reports/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                const data = await res.json();
+                alert(data.message || data.error);
                 loadAdmin();
+            } catch (err) {
+                alert('Failed to update status.');
             }
         }
 
         function logout() {
-            localStorage.removeItem('rg_currentUser');
+            localStorage.removeItem('user');
             window.location.href = 'login.html';
         }
 
