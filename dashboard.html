@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RoadGuard AI - Contributor Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+    <style>
+        body { font-family: Arial, sans-serif; background: #0f172a; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .vid-box { width: 100%; max-width: 500px; margin-bottom: 15px; }
+        video, canvas { width: 100%; border-radius: 8px; border: 2px solid #334155; }
+        .panel { background: #1e293b; padding: 1.5rem; border-radius: 8px; width: 100%; max-width: 500px; box-sizing: border-box; }
+        button { background: #22c55e; color: white; border: none; padding: 0.75rem; border-radius: 4px; width: 100%; font-weight: bold; cursor: pointer; }
+        button:hover { background: #16a34a; }
+        .log { margin-top: 10px; font-size: 0.85rem; background: #334155; padding: 8px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h2>Edge AI Road Damage Capture</h2>
+    <p id="userWelcome"></p>
+
+    <div class="vid-box">
+        <video id="cam" autoplay playsinline muted></video>
+        <canvas id="canvas" style="display:none;"></canvas>
+    </div>
+
+    <div class="panel">
+        <button onclick="detectAndReport()">Capture & Report Damage</button>
+        <div class="log" id="logBox">Acquiring GPS and initializing MobileNet...</div>
+    </div>
+
+    <script>
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (!user || user.role !== 'contributor') window.location.href = 'login.html';
+        document.getElementById('userWelcome').innerText = `Contributor: ${user.name}`;
+
+        let model, video = document.getElementById('cam'), canvas = document.getElementById('canvas'), log = document.getElementById('logBox');
+        let coords = { lat: null, lng: null };
+
+        navigator.geolocation.watchPosition(pos => {
+            coords.lat = pos.coords.latitude;
+            coords.lng = pos.coords.longitude;
+            log.innerText = `GPS Active: [${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}]`;
+        }, () => { log.innerText = 'Please enable location permissions.'; }, { enableHighAccuracy: true });
+
+        async function init() {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+            video.srcObject = stream;
+            model = await mobilenet.load();
+            log.innerText = 'MobileNet ready. Point camera at road damage.';
+        }
+        init();
+
+        async function detectAndReport() {
+            if (!coords.lat || !coords.lng) {
+                alert('Waiting for GPS lock...');
+                return;
+            }
+            canvas.width = video.videoWidth || 640;
+            canvas.height = video.videoHeight || 480;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const imageBase64 = canvas.toDataURL('image/jpeg');
+
+            log.innerText = 'Running MobileNet classification...';
+            const preds = await model.classify(video);
+            
+            let severity = preds[0].probability > 0.75 ? 'Severe' : (preds[0].probability > 0.4 ? 'Medium' : 'Low');
+            log.innerText = `Detected: ${preds[0].className} (${(preds[0].probability*100).toFixed(1)}%). Uploading...`;
+
+            const res = await fetch('http://localhost:5000/api/reports', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contributor_email: user.email,
+                    latitude: coords.lat,
+                    longitude: coords.lng,
+                    severity: severity,
+                    image_base64: imageBase64
+                })
+            });
+            const data = await res.json();
+            alert(data.message);
+            log.innerText = data.message;
+        }
+    </script>
+</body>
+</html>
