@@ -38,6 +38,7 @@
                     <th>Timestamp</th>
                     <th>Status Progress</th>
                 </tr>
+            </thead>
             <tbody id="reportTableBody">
                 <tr><td colspan="6" style="text-align:center;">Loading reports...</td></tr>
             </tbody>
@@ -45,7 +46,6 @@
     </div>
 
     <script>
-        // Check Admin Auth
         const adminUser = JSON.parse(localStorage.getItem('adminUser'));
         if (!adminUser || adminUser.role !== 'admin') {
             window.location.href = 'login.html';
@@ -61,7 +61,6 @@
                 const res = await fetch('/api/reports');
                 let reports = await res.json();
 
-                // Sort by highest severity: Severe -> Medium -> Low
                 const severityRank = { 'Severe': 3, 'Medium': 2, 'Low': 1 };
                 reports.sort((a, b) => (severityRank[b.severity] || 0) - (severityRank[a.severity] || 0));
 
@@ -128,7 +127,7 @@
         }
 
         loadAdminReports();
-        setInterval(loadAdminReports, 10000); // Auto-refresh admin table every 10s
+        setInterval(loadAdminReports, 10000);
     </script>
 </body>
 </html>
