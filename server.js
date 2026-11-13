@@ -9,9 +9,8 @@ app.use(express.static(__dirname));
 
 let reports = [];
 
-// Helper to calculate distance in meters between two lat/lng points
 function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
-    const R = 6371000; // Radius of earth in meters
+    const R = 6371000;
     const dLat = (lat2 - lat1) * (Math.PI / 180);
     const dLon = (lon2 - lon1) * (Math.PI / 180);
     const a =
@@ -22,17 +21,14 @@ function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
-// Get all reports for Admin review (sorted by severity)
 app.get('/api/reports', (req, res) => {
     res.json(reports);
 });
 
-// Get Public Reports (approved, under-construction, completed)
 app.get('/api/reports/public', (req, res) => {
     res.json(reports.filter(r => r.status !== 'pending'));
 });
 
-// Submit Report from Contributor Edge AI (with Spatial Deduplication)
 app.post('/api/reports', async (req, res) => {
     const { contributor_name, contributor_phone, latitude, longitude, severity, damage_type, image_base64 } = req.body;
     
@@ -43,7 +39,6 @@ app.post('/api/reports', async (req, res) => {
     const lat = parseFloat(latitude);
     const lon = parseFloat(longitude);
 
-    // Spatial Deduplication: Check if an unresolved report exists within 25 meters
     const duplicate = reports.find(r => 
         r.status !== 'completed' &&
         getDistanceFromLatLonInMeters(r.latitude, r.longitude, lat, lon) < 25
@@ -57,7 +52,6 @@ app.post('/api/reports', async (req, res) => {
         });
     }
 
-    // Reverse geocode road/location name using OpenStreetMap Nominatim
     let locationName = 'Unknown Road / Area';
     try {
         const fetch = (await import('node-fetch')).default;
@@ -80,7 +74,7 @@ app.post('/api/reports', async (req, res) => {
         severity: severity || 'Medium',
         damage_type: damage_type || 'Road Damage',
         image_base64,
-        status: 'pending', // pending, under-construction, completed
+        status: 'pending',
         timestamp: new Date().toISOString()
     };
 
@@ -88,7 +82,6 @@ app.post('/api/reports', async (req, res) => {
     res.json({ success: true, message: 'Report successfully submitted to Admin queue!' });
 });
 
-// Admin Update Report Status
 app.patch('/api/reports/:id', (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
