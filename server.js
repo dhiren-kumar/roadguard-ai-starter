@@ -13,11 +13,11 @@ const path = require("path");
 const fs = require("fs");
 
 // Database connection
-const connectDB = require("./config/db");
+const connectDB = require("./backend/src/config/db");
 
 // API routes
-const authRoutes = require("./routes/auth");
-const reportRoutes = require("./routes/reports");
+const authRoutes = require("./backend/src/routes/auth");
+const reportRoutes = require("./backend/src/routes/reports");
 
 // Initialize Express
 const app = express();
