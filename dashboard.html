@@ -3,25 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RoadGuard - Contributor Dashboard</title>
+    <title>RoadGuard Edge AI - Live Road Capture</title>
     <style>
         body { font-family: Arial, sans-serif; background: #0f172a; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
         .header { width: 100%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .logout { background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+        .logout { background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
         .vid-box { width: 100%; max-width: 500px; margin-bottom: 15px; }
         video, canvas { width: 100%; border-radius: 8px; border: 2px solid #334155; background: #1e293b; }
         .panel { background: #1e293b; padding: 1.5rem; border-radius: 8px; width: 100%; max-width: 500px; box-sizing: border-box; }
         label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: #cbd5e1; }
-        select { width: 100%; padding: 0.65rem; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; margin-bottom: 15px; font-size: 1rem; }
-        button.submit-btn { background: #22c55e; color: white; border: none; padding: 0.8rem; border-radius: 4px; width: 100%; font-weight: bold; font-size: 1rem; cursor: pointer; }
+        select { width: 100%; padding: 0.65rem; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; margin-bottom: 15px; }
+        button.submit-btn { background: #22c55e; color: white; border: none; padding: 0.8rem; border-radius: 4px; width: 100%; font-weight: bold; cursor: pointer; }
         button.submit-btn:hover { background: #16a34a; }
-        .log { margin-top: 12px; font-size: 0.85rem; background: #334155; padding: 10px; border-radius: 4px; line-height: 1.4; }
+        .ai-badge { margin-bottom: 12px; padding: 10px; background: #0f172a; border: 1px solid #3b82f6; border-radius: 4px; font-size: 0.85rem; color: #93c5fd; }
+        .log { margin-top: 12px; font-size: 0.85rem; background: #334155; padding: 10px; border-radius: 4px; }
     </style>
 </head>
 <body>
     <div class="header">
         <div>
-            <h3 style="margin:0;">Road Damage Capture</h3>
+            <h3 style="margin:0;">Edge AI Road Scanner</h3>
             <small id="userWelcome" style="color:#94a3b8;"></small>
         </div>
         <button class="logout" onclick="logout()">Logout</button>
@@ -33,115 +34,21 @@
     </div>
 
     <div class="panel">
-        <label for="severitySelect">Select Observed Damage Severity:</label>
+        <div class="ai-badge" id="aiBadge">Edge AI: Loading weights into device RAM...</div>
+
+        <label for="severitySelect">Detected Damage Severity (Auto-updated by Edge AI):</label>
         <select id="severitySelect">
-            <option value="Low">Low (Minor surface wear)</option>
-            <option value="Medium" selected>Medium (Visible cracks / small pothole)</option>
-            <option value="Severe">Severe (Deep pothole / dangerous road break)</option>
+            <option value="Low">Low</option>
+            <option value="Medium" selected>Medium</option>
+            <option value="Severe">Severe</option>
         </select>
 
-        <button class="submit-btn" onclick="captureAndReport()">Capture Photo & Submit Report</button>
-        <div class="log" id="logBox">Requesting GPS & Camera permissions...</div>
+        <button class="submit-btn" onclick="captureAndReport()">Capture & Send to Admin</button>
+        <div class="log" id="logBox">Initializing GPS and Camera...</div>
     </div>
 
-    <script>
-        const user = JSON.parse(localStorage.getItem('rg_currentUser'));
-        if (!user || user.role !== 'contributor') {
-            window.location.href = 'login.html';
-        }
-        document.getElementById('userWelcome').innerText = `${user.name} (${user.location})`;
-
-        const video = document.getElementById('cam');
-        const canvas = document.getElementById('canvas');
-        const log = document.getElementById('logBox');
-        let coords = { lat: null, lng: null };
-
-        // Request GPS Location
-        if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(
-                pos => {
-                    coords.lat = pos.coords.latitude;
-                    coords.lng = pos.coords.longitude;
-                    log.innerText = `GPS Locked: [${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}]`;
-                },
-                err => {
-                    log.innerText = 'GPS Permission denied or unavailable. Please allow location in browser settings.';
-                },
-                { enableHighAccuracy: true }
-            );
-        }
-
-        // Request Camera
-        async function initCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-                video.srcObject = stream;
-            } catch (err) {
-                log.innerText = 'Camera blocked or unavailable. Please allow camera access.';
-            }
-        }
-        initCamera();
-
-        function captureAndReport() {
-            if (!coords.lat || !coords.lng) {
-                alert('Still waiting for GPS coordinates. Please allow location access and try again.');
-                return;
-            }
-
-            let reports = JSON.parse(localStorage.getItem('rg_reports') || '[]');
-
-            // Duplicate location protection (~10 meters check)
-            const threshold = 0.0001;
-            const duplicate = reports.find(r =>
-                Math.abs(r.latitude - coords.lat) < threshold &&
-                Math.abs(r.longitude - coords.lng) < threshold &&
-                r.status !== 'resolved'
-            );
-
-            if (duplicate) {
-                alert('Duplicate Location Blocked: An active report already exists for this exact spot and will not be overwritten.');
-                log.innerText = 'Blocked: Active report already exists at these coordinates.';
-                return;
-            }
-
-            // Capture compressed frame from video
-            canvas.width = 480;
-            canvas.height = 360;
-            const ctx = canvas.getContext('2d');
-            if (video.readyState >= 2) {
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            } else {
-                ctx.fillStyle = '#334155';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#ffffff';
-                ctx.fillText('Camera Frame Captured', 160, 180);
-            }
-
-            const imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
-            const severity = document.getElementById('severitySelect').value;
-
-            const newReport = {
-                id: Date.now(),
-                contributor_email: user.email,
-                latitude: coords.lat,
-                longitude: coords.lng,
-                severity: severity,
-                image_base64: imageBase64,
-                status: 'pending',
-                timestamp: new Date().toLocaleString()
-            };
-
-            reports.unshift(newReport);
-            localStorage.setItem('rg_reports', JSON.stringify(reports));
-
-            alert('Report submitted! It will appear on the public map once approved by Admin.');
-            log.innerText = `Submitted (${severity}) at [${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}]. Status: Pending Approval.`;
-        }
-
-        function logout() {
-            localStorage.removeItem('rg_currentUser');
-            window.location.href = 'login.html';
-        }
-    </script>
+    <!-- ONNX Runtime Web library for local device RAM execution -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
