@@ -5,7 +5,11 @@ if (!user || user.role !== 'contributor') {
 
 const welcomeEl = document.getElementById('userWelcome');
 if (welcomeEl && user) {
+<<<<<<< HEAD
     welcomeEl.innerText = `${user.name} (${user.email || 'Contributor'})`;
+=======
+    welcomeEl.innerText = `${user.name} (${user.location || 'Contributor'})`;
+>>>>>>> a1478bd32f610091024a60994b907f1ce0b4ff0e
 }
 
 const video = document.getElementById('cam');
@@ -18,7 +22,11 @@ let ortSession = null;
 const MODEL_SIZE = 640;
 const DAMAGE_CLASSES = ['Longitudinal Crack', 'Transverse Crack', 'Alligator Crack', 'Pothole'];
 
+<<<<<<< HEAD
 // 1. Live GPS Tracking
+=======
+// 1. Live GPS Location
+>>>>>>> a1478bd32f610091024a60994b907f1ce0b4ff0e
 if (navigator.geolocation) {
     navigator.geolocation.watchPosition(
         pos => {
@@ -31,7 +39,11 @@ if (navigator.geolocation) {
     );
 }
 
+<<<<<<< HEAD
 // 2. Load Model into Local Device RAM
+=======
+// 2. Load Model Into Local Device RAM
+>>>>>>> a1478bd32f610091024a60994b907f1ce0b4ff0e
 async function initEdgeAI() {
     try {
         ortSession = await ort.InferenceSession.create('./model/best.onnx', {
@@ -118,7 +130,11 @@ function runLiveEdgeLoop() {
     }, 1200);
 }
 
+<<<<<<< HEAD
 // 5. Send Snapshot & Metadata to Backend
+=======
+// 5. Send Only Metadata + Snapshot to Backend
+>>>>>>> a1478bd32f610091024a60994b907f1ce0b4ff0e
 async function captureAndReport() {
     if (!coords.lat || !coords.lng) {
         alert('Waiting for GPS lock. Please allow location access.');
@@ -160,4 +176,8 @@ async function captureAndReport() {
 function logout() {
     localStorage.removeItem('user');
     window.location.href = 'login.html';
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> a1478bd32f610091024a60994b907f1ce0b4ff0e
