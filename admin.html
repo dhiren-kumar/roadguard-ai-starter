@@ -2,74 +2,148 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>RoadGuard AI - Admin Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RoadGuard - Admin Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f8fafc; color: #1e293b; }
-        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px; }
+        .top-bar h2 { margin: 0; }
+        .actions a, .actions button { padding: 8px 14px; border-radius: 4px; text-decoration: none; font-size: 0.9rem; cursor: pointer; border: none; }
+        .map-btn { background: #0f172a; color: white; }
+        .logout-btn { background: #ef4444; color: white; }
+        .table-wrap { overflow-x: auto; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+        table { width: 100%; border-collapse: collapse; min-width: 800px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.875rem; }
         th { background: #0f172a; color: white; }
-        img { width: 70px; border-radius: 4px; }
-        select, button { padding: 0.4rem; border-radius: 4px; border: 1px solid #cbd5e1; }
-        button { background: #3b82f6; color: white; border: none; cursor: pointer; }
+        img { width: 80px; height: 60px; object-fit: cover; border-radius: 4px; }
+        select, button.save-btn { padding: 0.45rem; border-radius: 4px; border: 1px solid #cbd5e1; }
+        button.save-btn { background: #3b82f6; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button.save-btn:hover { background: #2563eb; }
+        .loc-badge { font-weight: 600; color: #0f172a; display: block; margin-bottom: 2px; }
+        .coords-sub { color: #64748b; font-size: 0.78rem; }
     </style>
 </head>
 <body>
-    <h2>Admin Management Dashboard</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>Image</th>
-                <th>Contributor</th>
-                <th>Coords</th>
-                <th>Severity</th>
-                <th>Status</th>
-                <th>Action</th>
-            </tr>
-        </thead>
-        <tbody id="tbl"></tbody>
-    </table>
+    <div class="top-bar">
+        <h2>Admin Road Report Management</h2>
+        <div class="actions">
+            <a href="index.html" class="map-btn">View Public Map</a>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Photo</th>
+                    <th>Contributor</th>
+                    <th>Location (Country / City / Area)</th>
+                    <th>Severity</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody id="tbl"></tbody>
+        </table>
+    </div>
 
     <script>
         const user = JSON.parse(localStorage.getItem('user'));
-        if (!user || user.role !== 'admin') window.location.href = 'login.html';
-
-        async function loadAdmin() {
-            const res = await fetch('http://localhost:5000/api/reports/admin');
-            const data = await res.json();
-            const tbl = document.getElementById('tbl');
-            tbl.innerHTML = '';
-            data.forEach(r => {
-                tbl.innerHTML += `
-                    <tr>
-                        <td>${r.id}</td>
-                        <td><img src="${r.image_base64}"></td>
-                        <td>${r.contributor_email}</td>
-                        <td>${r.latitude.toFixed(3)}, ${r.longitude.toFixed(3)}</td>
-                        <td><b>${r.severity}</b></td>
-                        <td>
-                            <select id="st_${r.id}">
-                                <option value="pending" ${r.status==='pending'?'selected':''}>Pending</option>
-                                <option value="approved" ${r.status==='approved'?'selected':''}>Approved</option>
-                                <option value="under-construction" ${r.status==='under-construction'?'selected':''}>Under Construction</option>
-                                <option value="resolved" ${r.status==='resolved'?'selected':''}>Resolved</option>
-                            </select>
-                        </td>
-                        <td><button onclick="update(${r.id})">Save</button></td>
-                    </tr>`;
-            });
+        if (!user || user.role !== 'admin') {
+            window.location.href = 'login.html';
         }
 
-        async function update(id) {
-            const status = document.getElementById(`st_${id}`).value;
-            const res = await fetch(`http://localhost:5000/api/reports/${id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status })
-            });
-            const data = await res.json();
-            alert(data.message);
-            loadAdmin();
+        // Cache reverse-geocoded locations by coordinate key
+        const locationCache = {};
+
+        async function getFormattedLocation(lat, lng) {
+            const key = `${Number(lat).toFixed(4)},${Number(lng).toFixed(4)}`;
+            if (locationCache[key]) return locationCache[key];
+
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`);
+                const data = await res.json();
+                const addr = data.address || {};
+
+                const country = addr.country || 'India';
+                const cityOrDistrict = addr.city || addr.town || addr.state_district || addr.county || addr.state || 'Unknown City';
+                const localArea = addr.suburb || addr.neighbourhood || addr.village || addr.road || addr.hamlet || 'Local Area';
+
+                const formatted = `${country} / ${cityOrDistrict} / ${localArea}`;
+                locationCache[key] = formatted;
+                return formatted;
+            } catch (err) {
+                return 'Location lookup unavailable';
+            }
+        }
+
+        async function loadAdmin() {
+            try {
+                const res = await fetch('/api/reports/admin');
+                const reports = await res.json();
+                const tbl = document.getElementById('tbl');
+                tbl.innerHTML = '';
+
+                if (reports.length === 0) {
+                    tbl.innerHTML = '<tr><td colspan="7" style="text-align:center;">No reports found.</td></tr>';
+                    return;
+                }
+
+                reports.forEach(r => {
+                    tbl.innerHTML += `
+                        <tr>
+                            <td>#${String(r.id).slice(-4)}</td>
+                            <td><img src="${r.image_base64}" alt="Road"></td>
+                            <td>${r.contributor_email}<br><small style="color:#64748b;">${r.timestamp}</small></td>
+                            <td>
+                                <span class="loc-badge" id="loc_${r.id}">Resolving location...</span>
+                                <span class="coords-sub">${Number(r.latitude).toFixed(4)}, ${Number(r.longitude).toFixed(4)}</span>
+                            </td>
+                            <td><b>${r.severity}</b></td>
+                            <td>
+                                <select id="st_${r.id}">
+                                    <option value="pending" ${r.status==='pending'?'selected':''}>Pending</option>
+                                    <option value="approved" ${r.status==='approved'?'selected':''}>Approved</option>
+                                    <option value="under-construction" ${r.status==='under-construction'?'selected':''}>Under Construction</option>
+                                    <option value="resolved" ${r.status==='resolved'?'selected':''}>Resolved</option>
+                                </select>
+                            </td>
+                            <td><button class="save-btn" onclick="updateStatus(${r.id})">Save</button></td>
+                        </tr>`;
+                });
+
+                // Resolve human-readable location names asynchronously for each row
+                for (const r of reports) {
+                    const locText = await getFormattedLocation(r.latitude, r.longitude);
+                    const el = document.getElementById(`loc_${r.id}`);
+                    if (el) el.innerText = locText;
+                }
+            } catch (err) {
+                console.error('Failed to load admin reports:', err);
+            }
+        }
+
+        async function updateStatus(id) {
+            const newStatus = document.getElementById(`st_${id}`).value;
+            try {
+                const res = await fetch(`/api/reports/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: newStatus })
+                });
+                const data = await res.json();
+                alert(data.message || data.error);
+                loadAdmin();
+            } catch (err) {
+                alert('Failed to update status.');
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('user');
+            window.location.href = 'login.html';
         }
 
         loadAdmin();
