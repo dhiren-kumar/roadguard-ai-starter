@@ -9,11 +9,9 @@
         .header { width: 100%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
         .back-btn { background: #334155; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; text-decoration: none; font-size: 0.85rem; }
         
-        /* Onboarding Modal */
         #onboardModal { background: #1e293b; padding: 2rem; border-radius: 8px; width: 100%; max-width: 400px; box-sizing: border-box; border: 1px solid #334155; margin-top: 40px; }
         #onboardModal h3 { margin-top: 0; color: #38bdf8; text-align: center; }
         
-        /* Scanner Container */
         #scannerContainer { display: none; width: 100%; max-width: 500px; flex-direction: column; align-items: center; }
         .vid-box { width: 100%; margin-bottom: 15px; }
         video, canvas { width: 100%; border-radius: 8px; border: 2px solid #334155; background: #1e293b; }
@@ -28,7 +26,6 @@
 </head>
 <body>
 
-    <!-- STEP 1: Contributor Onboarding Form -->
     <div id="onboardModal">
         <h3>Contributor Registration</h3>
         <p style="font-size:0.85rem; color:#94a3b8; text-align:center;">Enter your details to start local AI road scanning.</p>
@@ -43,7 +40,6 @@
         <a href="index.html" class="back-btn" style="display:block; text-align:center; margin-top:15px; background:transparent; color:#94a3b8;">← Back to Map</a>
     </div>
 
-    <!-- STEP 2: Live Edge AI Camera Scanner -->
     <div id="scannerContainer">
         <div class="header">
             <div>
@@ -73,7 +69,6 @@
         </div>
     </div>
 
-    <!-- ONNX Runtime Web for Local Edge AI -->
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <script>
         let contributor = null;
@@ -108,7 +103,6 @@
             initCameraAndModel();
         }
 
-        // Auto-resume if already registered in session
         window.onload = () => {
             const saved = localStorage.getItem('roadguard_contributor');
             if (saved) {
@@ -204,12 +198,11 @@
                     aiBadge.innerText = `AI Detected: ${res.label} (${pct}%)`;
                     severitySelect.value = res.confidence > 0.85 ? 'Severe' : 'Medium';
 
-                    // Auto-clicker / auto-report trigger if high confidence damage spotted
                     if (res.confidence > 0.82 && coords.lat) {
                         isAutoReporting = true;
                         aiBadge.innerText = `Auto-capturing ${res.label} report...`;
                         await submitReport(res.label, severitySelect.value);
-                        setTimeout(() => { isAutoReporting = false; }, 12000); // 12s cooldown to prevent duplicates
+                        setTimeout(() => { isAutoReporting = false; }, 12000);
                     }
                 } else {
                     aiBadge.innerText = 'Scanning road locally... (Clear)';
