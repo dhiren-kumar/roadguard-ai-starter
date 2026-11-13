@@ -3,76 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RoadGuard AI - Public Map Portal</title>
+    <title>RoadGuard - Public Road Condition & Progress Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         body { font-family: Arial, sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; }
         header { background: #0f172a; color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; }
         header h2 { margin: 0; font-size: 1.2rem; }
-        .search-bar { padding: 0.75rem 1rem; background: #f8fafc; display: flex; gap: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); flex-wrap: wrap; }
-        .search-bar input { padding: 0.5rem; flex: 1; min-width: 200px; max-width: 350px; border: 1px solid #cbd5e1; border-radius: 4px; }
+        .search-bar { padding: 0.75rem 1rem; background: #f8fafc; display: flex; gap: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .search-bar input { padding: 0.5rem; flex: 1; max-width: 350px; border: 1px solid #cbd5e1; border-radius: 4px; }
         .search-bar button, header a { background: #3b82f6; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
-        .search-bar button:hover, header a:hover { background: #2563eb; }
         #map { flex-grow: 1; width: 100%; }
-        .legend { background: white; padding: 8px 12px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); font-size: 12px; line-height: 1.6; }
+        .legend { background: white; padding: 10px 14px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); font-size: 12px; line-height: 1.8; }
         .dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
     </style>
 </head>
 <body>
     <header>
-        <h2>RoadGuard Portal</h2>
+        <h2>RoadGuard Live Progress Map</h2>
         <a href="login.html">Login / Contribute</a>
     </header>
     <div class="search-bar">
-        <input type="text" id="searchInput" placeholder="Search city or area (e.g., Keonjhar, Bhubaneswar)...">
+        <input type="text" id="searchInput" placeholder="Search city or area (e.g. Bhubaneswar, Keonjhar)...">
         <button onclick="searchLocation()">Search Location</button>
     </div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        // Initialize default sample reports if storage is empty
-        function initStorage() {
-            if (!localStorage.getItem('rg_reports')) {
-                const sampleReports = [
-                    {
-                        id: 101,
-                        contributor_email: 'raja@example.com',
-                        latitude: 21.6289,
-                        longitude: 85.5817,
-                        severity: 'Severe',
-                        status: 'approved',
-                        image_base64: 'https://placehold.co/300x200/ef4444/white?text=Deep+Pothole+Keonjhar',
-                        timestamp: new Date().toLocaleString()
-                    },
-                    {
-                        id: 102,
-                        contributor_email: 'demo@example.com',
-                        latitude: 20.2961,
-                        longitude: 85.8245,
-                        severity: 'Medium',
-                        status: 'under-construction',
-                        image_base64: 'https://placehold.co/300x200/f97316/white?text=Road+Crack+Repair',
-                        timestamp: new Date().toLocaleString()
-                    }
-                ];
-                localStorage.setItem('rg_reports', JSON.stringify(sampleReports));
-            }
-        }
-        initStorage();
-
-        const map = L.map('map').setView([21.6289, 85.5817], 7);
+        const map = L.map('map').setView([20.2961, 85.8245], 7);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
 
-        // Add Color Legend
         const legend = L.control({ position: 'bottomright' });
         legend.onAdd = function () {
             const div = L.DomUtil.create('div', 'legend');
             div.innerHTML = `
-                <b>Damage Severity</b><br>
-                <span class="dot" style="background:red;"></span> Severe<br>
-                <span class="dot" style="background:orange;"></span> Medium<br>
-                <span class="dot" style="background:green;"></span> Low / Resolved
+                <b>Report Progress Status</b><br>
+                <span class="dot" style="background:red;"></span> Severe / Approved<br>
+                <span class="dot" style="background:orange;"></span> Under Construction<br>
+                <span class="dot" style="background:green;"></span> Resolved
             `;
             return div;
         };
@@ -80,29 +48,32 @@
 
         let markersLayer = L.layerGroup().addTo(map);
 
-        function loadReports() {
-            const reports = JSON.parse(localStorage.getItem('rg_reports') || '[]');
-            markersLayer.clearLayers();
+        async function loadPublicReports() {
+            try {
+                const res = await fetch('/api/reports/public');
+                const reports = await res.json();
+                markersLayer.clearLayers();
 
-            reports.filter(r => r.status !== 'pending').forEach(r => {
-                let color = 'green';
-                if (r.status !== 'resolved') {
-                    if (r.severity === 'Medium') color = 'orange';
-                    if (r.severity === 'High' || r.severity === 'Severe') color = 'red';
-                }
+                reports.forEach(r => {
+                    let color = 'red';
+                    if (r.status === 'under-construction') color = 'orange';
+                    if (r.status === 'resolved') color = 'green';
 
-                const marker = L.circleMarker([r.latitude, r.longitude], {
-                    radius: 10, fillColor: color, color: '#000', weight: 1.5, fillOpacity: 0.85
+                    const marker = L.circleMarker([r.latitude, r.longitude], {
+                        radius: 10, fillColor: color, color: '#000', weight: 1, fillOpacity: 0.9
+                    });
+
+                    marker.bindPopup(`
+                        <b>Severity: ${r.severity}</b><br>
+                        Status: <b style="text-transform:uppercase; color:${color};">${r.status}</b><br>
+                        <img src="${r.image_base64}" width="160px" style="margin-top:6px;border-radius:4px;"/><br>
+                        <small>Submitted by: ${r.contributor_email}<br>Date: ${new Date(r.timestamp).toLocaleString()}</small>
+                    `);
+                    markersLayer.addLayer(marker);
                 });
-
-                marker.bindPopup(`
-                    <b>Severity: ${r.severity}</b><br>
-                    Status: <b style="text-transform:uppercase;">${r.status}</b><br>
-                    <img src="${r.image_base64}" width="160px" style="margin-top:6px;border-radius:4px;"/><br>
-                    <small>By: ${r.contributor_email}<br>${r.timestamp}</small>
-                `);
-                markersLayer.addLayer(marker);
-            });
+            } catch (err) {
+                console.error('Failed to load public reports:', err);
+            }
         }
 
         function searchLocation() {
@@ -119,7 +90,8 @@
                 });
         }
 
-        loadReports();
+        loadPublicReports();
+        setInterval(loadPublicReports, 10000);
     </script>
 </body>
 </html>
