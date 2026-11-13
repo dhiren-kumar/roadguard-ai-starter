@@ -9,8 +9,9 @@ app.use(express.static(__dirname));
 
 let reports = [];
 
+// Helper to calculate distance in meters between two lat/lng points
 function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
-    const R = 6371000;
+    const R = 6371000; // Radius of earth in meters
     const dLat = (lat2 - lat1) * (Math.PI / 180);
     const dLon = (lon2 - lon1) * (Math.PI / 180);
     const a =
@@ -21,24 +22,28 @@ function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
     return R * c;
 }
 
+// 1. Get all reports for the Admin panel review
 app.get('/api/reports', (req, res) => {
     res.json(reports);
 });
 
+// 2. Get public reports for index.html (Excludes pending, shows approved/under-construction/completed read-only)
 app.get('/api/reports/public', (req, res) => {
     res.json(reports.filter(r => r.status !== 'pending'));
 });
 
+// 3. Submit Report from Edge AI Contributor (with 25m spatial deduplication)
 app.post('/api/reports', async (req, res) => {
     const { contributor_name, contributor_phone, latitude, longitude, severity, damage_type, image_base64 } = req.body;
     
     if (!latitude || !longitude || !image_base64) {
-        return res.status(400).json({ success: false, error: 'Missing GPS or image payload.' });
+        return res.status(400).json({ success: false, error: 'Missing GPS coordinates or image payload.' });
     }
 
     const lat = parseFloat(latitude);
     const lon = parseFloat(longitude);
 
+    // Prevent overwriting / duplicate spamming if reported within 25 meters
     const duplicate = reports.find(r => 
         r.status !== 'completed' &&
         getDistanceFromLatLonInMeters(r.latitude, r.longitude, lat, lon) < 25
@@ -52,6 +57,7 @@ app.post('/api/reports', async (req, res) => {
         });
     }
 
+    // Reverse geocode location name using OpenStreetMap Nominatim
     let locationName = 'Unknown Road / Area';
     try {
         const fetch = (await import('node-fetch')).default;
@@ -74,7 +80,7 @@ app.post('/api/reports', async (req, res) => {
         severity: severity || 'Medium',
         damage_type: damage_type || 'Road Damage',
         image_base64,
-        status: 'pending',
+        status: 'pending', // pending, under-construction, completed
         timestamp: new Date().toISOString()
     };
 
@@ -82,6 +88,7 @@ app.post('/api/reports', async (req, res) => {
     res.json({ success: true, message: 'Report successfully submitted to Admin queue!' });
 });
 
+// 4. Admin Update Report Status (Pending, Under Construction, Completed)
 app.patch('/api/reports/:id', (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
