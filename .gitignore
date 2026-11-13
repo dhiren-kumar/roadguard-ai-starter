@@ -1,0 +1,72 @@
+# ==============================
+# Node.js dependencies
+# ==============================
+node_modules/
+**/node_modules/
+
+# ==============================
+# Environment variables / secrets
+# ==============================
+.env
+.env.*
+**/.env
+**/.env.*
+
+!.env.example
+!**/.env.example
+
+# ==============================
+# Logs
+# ==============================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ==============================
+# Build files
+# ==============================
+dist/
+build/
+coverage/
+.next/
+out/
+
+# ==============================
+# Operating system files
+# ==============================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==============================
+# Editor files
+# ==============================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ==============================
+# Temporary files
+# ==============================
+tmp/
+temp/
+*.tmp
+*.bak
+
+# ==============================
+# Python files (AI integration)
+# ==============================
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+
+# ==============================
+# Model training temporary files
+# ==============================
+runs/
+wandb/
