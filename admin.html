@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RoadGuard AI - Admin Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f8fafc; color: #1e293b; }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.875rem; }
+        th { background: #0f172a; color: white; }
+        img { width: 70px; border-radius: 4px; }
+        select, button { padding: 0.4rem; border-radius: 4px; border: 1px solid #cbd5e1; }
+        button { background: #3b82f6; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h2>Admin Management Dashboard</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Image</th>
+                <th>Contributor</th>
+                <th>Coords</th>
+                <th>Severity</th>
+                <th>Status</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody id="tbl"></tbody>
+    </table>
+
+    <script>
+        const user = JSON.parse(localStorage.getItem('user'));
+        if (!user || user.role !== 'admin') window.location.href = 'login.html';
+
+        async function loadAdmin() {
+            const res = await fetch('http://localhost:5000/api/reports/admin');
+            const data = await res.json();
+            const tbl = document.getElementById('tbl');
+            tbl.innerHTML = '';
+            data.forEach(r => {
+                tbl.innerHTML += `
+                    <tr>
+                        <td>${r.id}</td>
+                        <td><img src="${r.image_base64}"></td>
+                        <td>${r.contributor_email}</td>
+                        <td>${r.latitude.toFixed(3)}, ${r.longitude.toFixed(3)}</td>
+                        <td><b>${r.severity}</b></td>
+                        <td>
+                            <select id="st_${r.id}">
+                                <option value="pending" ${r.status==='pending'?'selected':''}>Pending</option>
+                                <option value="approved" ${r.status==='approved'?'selected':''}>Approved</option>
+                                <option value="under-construction" ${r.status==='under-construction'?'selected':''}>Under Construction</option>
+                                <option value="resolved" ${r.status==='resolved'?'selected':''}>Resolved</option>
+                            </select>
+                        </td>
+                        <td><button onclick="update(${r.id})">Save</button></td>
+                    </tr>`;
+            });
+        }
+
+        async function update(id) {
+            const status = document.getElementById(`st_${id}`).value;
+            const res = await fetch(`http://localhost:5000/api/reports/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status })
+            });
+            const data = await res.json();
+            alert(data.message);
+            loadAdmin();
+        }
+
+        loadAdmin();
+    </script>
+</body>
+</html>

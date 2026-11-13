@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RoadGuard AI - Login</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f1f5f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        .tabs { display: flex; margin-bottom: 1rem; border-bottom: 2px solid #e2e8f0; }
+        .tab { flex: 1; padding: 0.75rem; text-align: center; cursor: pointer; font-weight: bold; color: #64748b; }
+        .tab.active { color: #3b82f6; border-bottom: 2px solid #3b82f6; margin-bottom: -2px; }
+        .group { margin-bottom: 1rem; }
+        label { display: block; margin-bottom: 0.4rem; font-size: 0.875rem; color: #334155; }
+        input { width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; background: #3b82f6; color: white; border: none; padding: 0.75rem; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #2563eb; }
+        .switch { text-align: center; margin-top: 1rem; font-size: 0.875rem; color: #64748b; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="tabs">
+            <div class="tab active" id="tabContributor" onclick="setRole('contributor')">Contributor</div>
+            <div class="tab" id="tabAdmin" onclick="setRole('admin')">Admin</div>
+        </div>
+        <h3 id="title">Contributor Login</h3>
+        <form id="form" onsubmit="submitForm(event)">
+            <input type="hidden" id="role" value="contributor">
+            <div class="group" id="nameBox" style="display:none;"><label>Name</label><input type="text" id="name"></div>
+            <div class="group"><label>Email</label><input type="email" id="email" required></div>
+            <div class="group"><label>Password</label><input type="password" id="password" required></div>
+            <div class="group" id="locationBox" style="display:none;"><label>Location / City</label><input type="text" id="location"></div>
+            <button type="submit" id="btn">Login</button>
+        </form>
+        <div class="switch" id="toggleText" onclick="toggleMode()">Need an account? Register</div>
+    </div>
+    <script>
+        let isLogin = true;
+        let role = 'contributor';
+
+        function setRole(r) {
+            role = r;
+            document.getElementById('role').value = r;
+            if (r === 'admin') {
+                document.getElementById('tabAdmin').classList.add('active');
+                document.getElementById('tabContributor').classList.remove('active');
+                isLogin = true;
+                document.getElementById('toggleText').style.display = 'none';
+                document.getElementById('nameBox').style.display = 'none';
+                document.getElementById('locationBox').style.display = 'none';
+                document.getElementById('title').innerText = 'Admin Login';
+                document.getElementById('btn').innerText = 'Login as Admin';
+            } else {
+                document.getElementById('tabContributor').classList.add('active');
+                document.getElementById('tabAdmin').classList.remove('active');
+                document.getElementById('toggleText').style.display = 'block';
+                document.getElementById('title').innerText = isLogin ? 'Contributor Login' : 'Contributor Registration';
+                document.getElementById('btn').innerText = isLogin ? 'Login' : 'Register';
+            }
+        }
+
+        function toggleMode() {
+            isLogin = !isLogin;
+            document.getElementById('title').innerText = isLogin ? 'Contributor Login' : 'Contributor Registration';
+            document.getElementById('btn').innerText = isLogin ? 'Login' : 'Register';
+            document.getElementById('toggleText').innerText = isLogin ? 'Need an account? Register' : 'Have an account? Login';
+            document.getElementById('nameBox').style.display = isLogin ? 'none' : 'block';
+            document.getElementById('locationBox').style.display = isLogin ? 'none' : 'block';
+        }
+
+        async function submitForm(e) {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            if (isLogin) {
+                const res = await fetch('http://localhost:5000/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password, role })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem('user', JSON.stringify(data.user));
+                    window.location.href = data.user.role === 'admin' ? 'admin.html' : 'dashboard.html';
+                } else { alert(data.error); }
+            } else {
+                const name = document.getElementById('name').value;
+                const location = document.getElementById('location').value;
+                const res = await fetch('http://localhost:5000/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, password, location, role: 'contributor' })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('Registration complete! Please log in.');
+                    toggleMode();
+                } else { alert(data.error); }
+            }
+        }
+    </script>
+</body>
+</html>
