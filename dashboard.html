@@ -398,6 +398,8 @@ button.action-btn:hover{background:#10553b}
             }
             const imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
 
+            // Report the actual AI class names, not just the number of detections.
+            const damageTypeSummary = [...new Set(damages.map(item => item.label).filter(Boolean))].join(', ') || 'Road damage';
             const newReport = {
                 contributor_name: contributor ? contributor.name : '',
                 contributor_phone: contributor ? contributor.phone : '',
@@ -407,6 +409,7 @@ button.action-btn:hover{background:#10553b}
                 latitude: latitude,
                 longitude: longitude,
                 severity: severity,
+                damage_type: damageTypeSummary,
                 damage_count: damages.length,
                 damages_detected: damages,
                 image_base64: imageBase64,
@@ -452,7 +455,7 @@ button.action-btn:hover{background:#10553b}
                             longitude: report.longitude,
                             severity: report.severity,
                             description: `Detected ${report.damage_count} road damage item(s) by on-device AI.`,
-                            damage_type: `Multi-Damage Count: ${report.damage_count}`,
+                            damage_type: report.damage_type || [...new Set((report.damages_detected || []).map(item => item.label).filter(Boolean))].join(', ') || 'Road damage',
                             image_base64: report.image_base64
                         })
                     });
