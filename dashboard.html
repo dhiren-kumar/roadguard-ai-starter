@@ -177,8 +177,7 @@ button.action-btn:hover{background:#10553b}
   <div id="gpsPanel" style="background:#f2f6f2;border:1px solid #dce5de;border-radius:8px;padding:12px;margin:10px 0;color:#405449;font-size:13px">
     <strong>Live GPS</strong>
     <div id="gpsStatus" role="status" style="margin-top:6px">Waiting for GPS permission…</div>
-    <div id="gpsCoords" style="margin-top:4px">Coordinates: Not available</div>
-    <div id="gpsPlace" style="margin-top:4px">Road/place name: Select the labelled road or nearby place on the map below.</div>
+    <div id="gpsPlace" style="margin-top:4px">GPS location will be attached automatically. Enter the road or nearby place name below.</div>
   </div>
   <div style="margin:10px 0;padding:12px;background:#f2f6f2;border:1px solid #dce5de;border-radius:8px;color:#405449;font-size:13px">
     <strong>Report place name</strong>
@@ -241,7 +240,6 @@ button.action-btn:hover{background:#10553b}
 
         function initGPS() {
             const statusEl = document.getElementById('gpsStatus');
-            const coordsEl = document.getElementById('gpsCoords');
             if (!navigator.geolocation) {
                 if (statusEl) statusEl.textContent = 'GPS is not supported by this browser.';
                 return;
@@ -253,7 +251,6 @@ button.action-btn:hover{background:#10553b}
                     coords.lat = pos.coords.latitude;
                     coords.lng = pos.coords.longitude;
                     if (statusEl) statusEl.textContent = 'Live GPS active · accuracy ±' + Math.round(pos.coords.accuracy) + ' m · updated ' + new Date(pos.timestamp).toLocaleTimeString();
-                    if (coordsEl) coordsEl.textContent = 'Coordinates: ' + coords.lat.toFixed(6) + ', ' + coords.lng.toFixed(6);
                     const placeEl = document.getElementById('gpsPlace');
                     if (placeEl) placeEl.textContent = 'GPS coordinates will be attached automatically to each report.';
                     if (log) log.innerText = 'Live GPS locked: [' + coords.lat.toFixed(5) + ', ' + coords.lng.toFixed(5) + ']';
