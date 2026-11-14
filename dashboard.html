@@ -400,11 +400,12 @@ button.action-btn:hover{background:#10553b}
 
             let successCount = 0;
             const failedReports = [];
+            const failureReasons = [];
             for (let report of localReports) {
                 try {
                     const response = await fetch(BACKEND_URL, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                         body: JSON.stringify({
                             contributor_name: report.contributor_name,
                             contributor_phone: report.contributor_phone,
@@ -418,22 +419,31 @@ button.action-btn:hover{background:#10553b}
                             image_base64: report.image_base64
                         })
                     });
-                    const result = await response.json();
-                    if (response.ok && result.success) successCount++;
-                    else failedReports.push(report);
+                    const rawBody = await response.text();
+                    let result = {};
+                    try { result = rawBody ? JSON.parse(rawBody) : {}; } catch (_) {}
+                    if (response.ok && result.success) {
+                        successCount++;
+                    } else {
+                        failedReports.push(report);
+                        failureReasons.push(`HTTP ${response.status}: ${result.message || rawBody.slice(0, 180) || 'Server rejected the report'}`);
+                    }
                 } catch (err) {
                     console.error("Sync error:", err);
                     failedReports.push(report);
+                    failureReasons.push(err.message || 'Network request failed');
                 }
             }
 
             localStorage.setItem('roadguard_local_reports', JSON.stringify(failedReports));
+            updateLocalStorageCount();
             if (successCount > 0) {
-                alert(`Successfully sent ${successCount} report(s). Reports are awaiting admin review. ${failedReports.length} report(s) remain saved locally.`);
-                updateLocalStorageCount();
+                alert(`Successfully sent ${successCount} report(s). ${failedReports.length} report(s) remain saved locally.`);
                 if (log) log.innerText = 'Upload finished. Any failed reports remain saved locally.';
             } else {
-                alert('Failed to connect to backend server. Stored reports remain saved locally.');
+                const reason = failureReasons[0] || 'Unknown upload error';
+                if (log) log.innerText = `Upload failed: ${reason}. ${failedReports.length} report(s) are still saved on this device.`;
+                alert(`Report upload failed: ${reason}. Your ${failedReports.length} report(s) are still saved locally. Do not clear browser data.`);
             }
         }
     </script>
