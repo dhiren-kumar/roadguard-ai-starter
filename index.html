@@ -25,7 +25,8 @@ tbody tr:hover{background:#26364d}tbody tr:last-child td{border-bottom:0}
 .status-pending{background:#78350f;color:#fde68a}.status-approved{background:#1e40af;color:#bfdbfe}.status-under-construction{background:#9a3412;color:#fed7aa}.status-resolved{background:#14532d;color:#bbf7d0}.status-rejected{background:#7f1d1d;color:#fecaca}
 .severity-high{color:#fca5a5}.severity-medium{color:#fcd34d}.severity-low{color:#86efac}
 .empty{text-align:center;padding:28px;color:#94a3b8}.status-note{color:#94a3b8;font-size:12px;margin:12px 0 26px}
-.search-bar{display:flex;gap:9px;flex-wrap:wrap;margin:16px 0 12px}.search-bar input{padding:10px 12px;max-width:360px;flex:1;min-width:180px;border:1px solid #475569;border-radius:5px;background:#111c30;color:#fff}
+.search-bar{display:flex;gap:9px;flex-wrap:wrap;margin:16px 0 12px}.search-bar input,.search-bar select{padding:10px 12px;max-width:360px;flex:1;min-width:160px;border:1px solid #475569;border-radius:5px;background:#111c30;color:#fff}
+#reportFilters{margin:14px 0}#reportFilters button{background:#475569}
 #map{height:480px;width:100%;border:1px solid #334155;border-radius:8px;overflow:hidden}
 .legend{background:#1e293b;color:#fff;padding:10px 14px;border-radius:6px;line-height:1.9;font-size:12px;border:1px solid #475569}
 .dot{height:10px;width:10px;border-radius:50%;display:inline-block;margin-right:6px}
@@ -61,6 +62,13 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       <div><h2 id="reportsHeading">Public Road Damage Reports</h2><p class="sub">Verified reports and their latest progress updates.</p></div>
       <span class="sub" id="reportCount" role="status">Loading reports…</span>
     </div>
+    <div class="search-bar" id="reportFilters" aria-label="Filter public reports">
+      <select id="damageTypeFilter" aria-label="Filter by damage type"><option value="">All damage types</option></select>
+      <select id="severityFilter" aria-label="Filter by severity"><option value="">All severity levels</option><option value="high">High severity</option><option value="medium">Medium severity</option><option value="low">Low severity</option></select>
+      <select id="statusFilter" aria-label="Filter by progress status"><option value="">All progress statuses</option><option value="approved">Approved</option><option value="under-construction">Under construction</option><option value="resolved">Resolved</option></select>
+      <input type="search" id="districtFilter" placeholder="Filter by district or place name" aria-label="Filter by district or place name">
+      <button type="button" id="clearFiltersButton">Clear filters</button>
+    </div>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Photo</th><th>Damage type</th><th>Severity</th><th>Location</th><th>District</th><th>Reported on</th><th>Progress status</th><th>Details</th></tr></thead>
@@ -89,7 +97,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   const table=document.getElementById("reportTable");
   const reportCount=document.getElementById("reportCount");
   const mapStatus=document.getElementById("mapStatus");
-  const MAP_MAX_ZOOM=18;
+  const MAP_MAX_ZOOM=18;\n  let allReports=[];
   const map=L.map("map",{scrollWheelZoom:false, doubleClickZoom:true, zoomControl:true,maxZoom:MAP_MAX_ZOOM,minZoom:3}).setView([20.2961,85.8245],7);
   // Explicit mouse-wheel handling: zoom only while the pointer is over the map.
   let wheelZoomTimer=null;
@@ -209,6 +217,44 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
     });
   }
   const districtCache=new Map();
+  function populateDamageTypeFilter(reports){
+    const select=document.getElementById("damageTypeFilter");
+    const selected=select.value;
+    const types=new Set();
+    reports.forEach(report=>String(report.damage_type||"Road damage").split(/[,;|]/).map(v=>v.trim()).filter(Boolean).forEach(v=>types.add(v)));
+    select.replaceChildren(new Option("All damage types",""));
+    [...types].sort((a,b)=>a.localeCompare(b)).forEach(type=>select.add(new Option(type,type)));
+    if([...select.options].some(option=>option.value===selected))select.value=selected;
+  }
+  function applyReportFilters(){
+    const damage=document.getElementById("damageTypeFilter").value.toLowerCase();
+    const severity=document.getElementById("severityFilter").value.toLowerCase();
+    const status=document.getElementById("statusFilter").value.toLowerCase();
+    const area=document.getElementById("districtFilter").value.trim().toLowerCase();
+    const filtered=allReports.filter(report=>{
+      const types=String(report.damage_type||"Road damage").toLowerCase().split(/[,;|]/).map(v=>v.trim());
+      if(damage&&!types.includes(damage))return false;
+      if(severity&&String(report.severity||"").toLowerCase()!==severity)return false;
+      if(status&&String(report.status||"").toLowerCase()!==status)return false;
+      if(area){
+        const lat=Number(report.latitude),lng=Number(report.longitude);
+        const key=Number.isFinite(lat)&&Number.isFinite(lng)?lat.toFixed(5)+","+lng.toFixed(5):"";
+        const district=String(report.district||districtCache.get(key)||"").toLowerCase();
+        const place=String(report.location_name||"").toLowerCase();
+        if(!district.includes(area)&&!place.includes(area))return false;
+      }
+      return true;
+    });
+    render(filtered);
+    reportCount.textContent=filtered.length+" of "+allReports.length+" public report(s)";
+    mapStatus.textContent="Showing "+filtered.length+" of "+allReports.length+" public report(s) on the map.";
+  }
+  ["damageTypeFilter","severityFilter","statusFilter"].forEach(id=>document.getElementById(id).addEventListener("change",applyReportFilters));
+  document.getElementById("districtFilter").addEventListener("input",applyReportFilters);
+  document.getElementById("clearFiltersButton").addEventListener("click",()=>{
+    ["damageTypeFilter","severityFilter","statusFilter","districtFilter"].forEach(id=>document.getElementById(id).value="");
+    applyReportFilters();
+  });
   const districtPending=new Map();
   let lastDistrictLookup=0;
   async function lookupDistrict(lat,lng,reportKey,popupNode){
@@ -296,7 +342,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       if(!response.ok)throw new Error("Could not load public reports (HTTP "+response.status+").");
       const reports=await response.json();
       if(!Array.isArray(reports))throw new Error("Unexpected reports response.");
-      render(reports);mapStatus.textContent="Map updated. "+reports.length+" public report(s) shown.";
+      allReports=reports;populateDamageTypeFilter(allReports);applyReportFilters();
     }catch(error){
       table.replaceChildren();const tr=document.createElement("tr"),td=cell(tr,error.message);td.colSpan=7;td.className="empty";table.appendChild(tr);
       reportCount.textContent="Reports unavailable";mapStatus.textContent=error.message;
