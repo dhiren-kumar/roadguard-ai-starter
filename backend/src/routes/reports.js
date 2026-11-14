@@ -73,7 +73,7 @@ router.post("/", async (req, res) => {
         if (!contributorName || !contributorPhone) {
             return res.status(400).json({ success: false, message: "Contributor name and phone number are required." });
         }
-        if (contributorEmail && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(contributorEmail)) {
+        if (contributorEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contributorEmail)) {
             return res.status(400).json({ success: false, message: "Enter a valid contributor email address." });
         }
         if (!SEVERITIES.includes(severity)) {
