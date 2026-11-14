@@ -345,7 +345,7 @@
             const imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
 
             try {
-                const response = await fetch('/api/reports', {
+                const response = await fetch('https://roadguard-ai-starter-1.onrender.com', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
