@@ -75,20 +75,20 @@ a{color:#176b4b}
         }
         async function verifyAdmin() {
             if (!token || !currentUser || currentUser.role !== 'admin') {
-                window.location.href = 'login.html'; return false;
+                window.location.href = 'login.html?mode=admin'; return false;
             }
             try {
                 const data = await api('/api/auth/me');
                 if (data.user.role !== 'admin') throw new Error('Admin access required.');
                 return true;
             } catch (error) {
-                sessionStorage.clear(); window.location.href = 'login.html'; return false;
+                sessionStorage.clear(); window.location.href = 'login.html?mode=admin'; return false;
             }
         }
         function logoutAdmin() {
             sessionStorage.removeItem('roadguard_token');
             sessionStorage.removeItem('roadguard_user');
-            window.location.href = 'login.html';
+            window.location.href = 'login.html?mode=admin';
         }
         async function loadAdminReports() {
             try {
