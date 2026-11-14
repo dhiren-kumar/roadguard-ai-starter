@@ -70,7 +70,7 @@
                 reports.forEach(r => {
                     let color = 'red';
                     if (r.status === 'under-construction') color = 'orange';
-                    if (r.status === 'completed') color = 'green';
+                    if (r.status === 'resolved') color = 'green';
 
                     const marker = L.circleMarker([r.latitude, r.longitude], {
                         radius: 10, fillColor: color, color: '#000', weight: 1, fillOpacity: 0.9
