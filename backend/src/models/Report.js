@@ -68,8 +68,9 @@ const reportSchema = new mongoose.Schema(
     }
 );
 
-// Geospatial index for nearby-road report checking
+// Indexes support nearby-road checks and the public status/date query.
 reportSchema.index({ location: "2dsphere" });
+reportSchema.index({ status: 1, createdAt: -1 });
 
 const Report = mongoose.model("Report", reportSchema);
 
