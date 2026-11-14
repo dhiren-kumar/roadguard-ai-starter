@@ -44,38 +44,27 @@ body.admin-mode .admin-mark{display:block;text-align:center;color:#93c5fd;font-s
 <div class="admin-mark">ROADGUARD AI · ADMINISTRATOR ACCESS</div>
 <h1>RoadGuard AI</h1><p id="intro">Sign in to your account to report road damage or manage reports.</p>
 <form id="authForm">
-<div id="nameWrap" hidden><label for="name">Full name</label><input id="name" autocomplete="name"></div>
-<div id="locationWrap" hidden><label for="locationText">Location (optional)</label><input id="locationText" maxlength="200"></div>
 <label for="email">Email</label><input id="email" type="email" required autocomplete="email">
 <label for="password">Password</label><input id="password" type="password" required minlength="8" autocomplete="current-password">
 <button id="submitBtn" type="submit">Sign in</button>
 </form>
-<button class="switch" id="toggle" type="button">Create contributor account</button>
+
 <div class="status" id="status" role="status"></div>
 <p><a href="index.html">← Back to public map</a></p>
 </main>
 <script>
-let registering=false;
-const adminMode=new URLSearchParams(window.location.search).get("mode")==="admin";
-if(adminMode){document.body.classList.add("admin-mode");document.title="RoadGuard AI - Administrator Sign in";document.querySelector("h1").textContent="Administrator Sign in";document.getElementById("intro").textContent="Restricted access. Sign in with your RoadGuard AI administrator account.";document.getElementById("toggle").hidden=true;}
+const adminMode=true;
+document.body.classList.add("admin-mode");
+document.title="RoadGuard AI - Administrator Sign in";
+document.querySelector("h1").textContent="Administrator Sign in";
+document.getElementById("intro").textContent="Restricted access. Sign in with your RoadGuard AI administrator account.";
 const form=document.getElementById("authForm");
 const statusEl=document.getElementById("status");
-document.getElementById("toggle").addEventListener("click",()=>{
- registering=!registering;
- document.getElementById("nameWrap").hidden=!registering;
- document.getElementById("locationWrap").hidden=!registering;
- document.getElementById("intro").textContent=registering?"Create a contributor account. Verify your email before signing in.":"Sign in to your account to report road damage or manage reports.";
- document.getElementById("submitBtn").textContent=registering?"Register":"Sign in";
- document.getElementById("toggle").textContent=registering?"I already have an account":"Create contributor account";
- document.getElementById("password").autocomplete=registering?"new-password":"current-password";
- statusEl.textContent="";
-});
 form.addEventListener("submit",async event=>{
  event.preventDefault();statusEl.textContent="Please wait...";
  const payload={email:document.getElementById("email").value.trim(),password:document.getElementById("password").value};
- if(registering){payload.name=document.getElementById("name").value.trim();payload.locationText=document.getElementById("locationText").value.trim();}
  try{
-  const response=await fetch(registering?"/api/auth/register":"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+  const response=await fetch("/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
   const contentType=response.headers.get("content-type")||"";
   const responseText=await response.text();
   let data={};
@@ -87,11 +76,10 @@ form.addEventListener("submit",async event=>{
   }
   if(!response.ok)throw new Error(data.message||`Login failed (HTTP ${response.status}).`);
 
-  if(registering){statusEl.textContent=data.message;return;}
-  if(adminMode && data.user.role!=="admin"){statusEl.textContent="Access denied. This sign-in page is for administrators only.";return;}
+  if(data.user.role!=="admin"){statusEl.textContent="Access denied. This sign-in page is for administrators only.";return;}
   sessionStorage.setItem("roadguard_token",data.token);
   sessionStorage.setItem("roadguard_user",JSON.stringify(data.user));
-  window.location.href=data.user.role==="admin"?"admin.html":"dashboard.html";
+  window.location.href="admin.html";
  }catch(error){statusEl.textContent=error.message;}
 });
 </script></body></html>
