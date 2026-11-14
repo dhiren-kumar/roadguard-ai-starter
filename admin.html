@@ -107,7 +107,7 @@ a{color:#176b4b}
                     const coords = `${r.latitude},${r.longitude}`;
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td>${r.image_base64 ? `<img src="${escapeHtml(r.image_base64)}" width="100" height="70" alt="Road damage">` : 'No image'}</td>
+                        <td class="report-photo-cell"></td>
                         <td><b>${escapeHtml(r.damage_type)}</b><br><span class="${badge}">${escapeHtml(severity)}</span></td>
                         <td>${escapeHtml(r.contributor_name)}</td>
                         <td><a href="https://maps.google.com/?q=${encodeURIComponent(coords)}" target="_blank" rel="noopener">View location</a><br><small>${escapeHtml(coords)}</small></td>
@@ -119,6 +119,19 @@ a{color:#176b4b}
                             <option value="resolved" ${r.status==='resolved'?'selected':''}>Resolved</option>
                             <option value="rejected" ${r.status==='rejected'?'selected':''}>Rejected</option>
                         </select></td>`;
+                    const photoCell = tr.querySelector('.report-photo-cell');
+                    const photoUrl = typeof r.image_url === 'string' ? r.image_url : r.image_base64;
+                    const validPhoto = typeof photoUrl === 'string' && (/^https:\/\/res\.cloudinary\.com\/[A-Za-z0-9_-]+\//.test(photoUrl) || /^data:image\/(jpeg|jpg|png|webp);base64,/.test(photoUrl));
+                    if (validPhoto) {
+                        const link = document.createElement('a');
+                        link.href = photoUrl; link.target = '_blank'; link.rel = 'noopener noreferrer';
+                        link.title = 'Open full-size report photo';
+                        const img = document.createElement('img');
+                        img.src = photoUrl; img.width = 100; img.height = 70;
+                        img.alt = 'Road damage report — open full-size photo'; img.loading = 'lazy';
+                        img.onerror = () => { link.replaceWith(document.createTextNode('Photo unavailable')); };
+                        link.appendChild(img); photoCell.appendChild(link);
+                    } else { photoCell.textContent = 'No image'; }
                     tbody.appendChild(tr);
                 });
             } catch (error) {
