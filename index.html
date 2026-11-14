@@ -107,35 +107,6 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   ).addTo(map);
   const markers=L.layerGroup().addTo(map);
   const reportMarkers=new Map();
-  // Resolve a report coordinate to its nearest road or, if unavailable, a nearby place.
-  const addressCacheKey="roadguard_reverse_geocode_v1";
-  let addressCache={};
-  try{addressCache=JSON.parse(localStorage.getItem(addressCacheKey)||"{}");}catch(_){addressCache={};}
-  let lastReverseLookup=0;
-  let reverseLookupQueue=Promise.resolve();
-  async function lookupNearestRoadOrPlace(lat,lng){
-    const key=lat.toFixed(5)+","+lng.toFixed(5);
-    if(addressCache[key])return addressCache[key];
-    const wait=Math.max(0,1100-(Date.now()-lastReverseLookup));
-    if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
-    lastReverseLookup=Date.now();
-    const url="https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat="+encodeURIComponent(lat)+"&lon="+encodeURIComponent(lng)+"&zoom=18&addressdetails=1";
-    const response=await fetch(url,{headers:{Accept:"application/json"}});
-    if(!response.ok)throw new Error("Nearby place lookup unavailable (HTTP "+response.status+").");
-    const data=await response.json();
-    const a=data.address||{};
-    const road=a.road||a.pedestrian||a.residential||a.footway||a.path||a.cycleway||a.highway;
-    const nearby=a.neighbourhood||a.suburb||a.quarter||a.village||a.town||a.city_district||a.city||a.county;
-    const result=road?(nearby?road+", "+nearby:road):(a.amenity||a.tourism||a.shop||a.leisure||a.building||nearby||data.name||data.display_name||"Nearby road/place name unavailable");
-    addressCache[key]=result;
-    try{localStorage.setItem(addressCacheKey,JSON.stringify(addressCache));}catch(_){}
-    return result;
-  }
-  function nearestRoadOrPlace(lat,lng){
-    const task=reverseLookupQueue.then(()=>lookupNearestRoadOrPlace(lat,lng));
-    reverseLookupQueue=task.catch(()=>{});
-    return task;
-  }
   const legend=L.control({position:"bottomright"});
   legend.onAdd=()=>{const el=L.DomUtil.create("div","legend");el.innerHTML='<b>Report progress</b><br><span class="dot" style="background:#3b82f6"></span>Approved<br><span class="dot" style="background:#f97316"></span>Under construction<br><span class="dot" style="background:#22c55e"></span>Resolved';return el;};
   legend.addTo(map);
@@ -162,7 +133,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       const lat=Number(r.latitude),lng=Number(r.longitude);
       const validCoords=Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180;
       const locationLabel=document.createElement("span");
-      locationLabel.textContent=r.location_name||"Finding nearby road/place…";
+      locationLabel.textContent=r.location_name||"Name not provided";
       locationCell.appendChild(locationLabel);
       if(validCoords){
         const viewButton=document.createElement("button");
@@ -175,9 +146,6 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
           document.getElementById("map").scrollIntoView({behavior:"smooth",block:"center"});
         });
         locationCell.appendChild(viewButton);
-        if(!r.location_name){
-          nearestRoadOrPlace(lat,lng).then(name=>{locationLabel.textContent=name;}).catch(()=>{locationLabel.textContent="Nearby road/place name unavailable";});
-        }
       }
       tr.appendChild(locationCell);
       cell(tr,r.timestamp?new Date(r.timestamp).toLocaleString():"—");
@@ -186,7 +154,6 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       const badge=document.createElement("span");badge.className="pill status-"+status;badge.textContent=status.replaceAll("-"," ");
       statusCell.appendChild(badge);tr.appendChild(statusCell);
       table.appendChild(tr);
-      const lat=Number(r.latitude),lng=Number(r.longitude);
       if(Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180){
         const color=status==="resolved"?"#22c55e":status==="under-construction"?"#f97316":"#3b82f6";
         const marker=L.circleMarker([lat,lng],{radius:9,fillColor:color,color:"#0f172a",weight:1,fillOpacity:.9}).addTo(markers);
@@ -194,15 +161,8 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
         const popup=document.createElement("div");
         const title=document.createElement("strong");title.textContent=r.damage_type||"Road damage";popup.appendChild(title);
         const line=document.createElement("p");line.textContent="Status: "+status.replaceAll("-"," ");popup.appendChild(line);
-        const loc=document.createElement("small");loc.textContent="Finding nearest road or place…";popup.appendChild(loc);
+        const loc=document.createElement("small");loc.textContent=r.location_name||"Road/place name not provided";popup.appendChild(loc);
         marker.bindPopup(popup);
-        marker.on("popupopen",async()=>{
-          if(loc.dataset.loaded==="true"||loc.dataset.loading==="true")return;
-          loc.dataset.loading="true";
-          try{loc.textContent=await nearestRoadOrPlace(lat,lng);loc.dataset.loaded="true";}
-          catch(error){loc.textContent=r.location_name||"Road/place name unavailable";mapStatus.textContent=error.message;}
-          finally{delete loc.dataset.loading;}
-        });
       }
     });
   }
