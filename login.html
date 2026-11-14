@@ -46,8 +46,17 @@ form.addEventListener("submit",async event=>{
  if(registering){payload.name=document.getElementById("name").value.trim();payload.locationText=document.getElementById("locationText").value.trim();}
  try{
   const response=await fetch(registering?"/api/auth/register":"/api/auth/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
-  const data=await response.json();
-  if(!response.ok)throw new Error(data.message||"Request failed.");
+  const contentType=response.headers.get("content-type")||"";
+  const responseText=await response.text();
+  let data={};
+  if(contentType.includes("application/json")){
+   try{data=JSON.parse(responseText);}catch{throw new Error("The server returned invalid JSON. Please check the Render deployment logs.");}
+  }else{
+   const preview=responseText.replace(/<[^>]*>/g," ").replace(/\\s+/g," ").trim().slice(0,180);
+   throw new Error(`Login API returned HTML instead of JSON (HTTP ${response.status}). ${preview||"The backend may be unavailable or the API route is not being reached."} Check /api/health and the Render service logs.`);
+  }
+  if(!response.ok)throw new Error(data.message||`Login failed (HTTP ${response.status}).`);
+
   if(registering){statusEl.textContent=data.message;return;}
   sessionStorage.setItem("roadguard_token",data.token);
   sessionStorage.setItem("roadguard_user",JSON.stringify(data.user));
