@@ -418,7 +418,7 @@
             if (successCount > 0) {
                 alert(`Successfully sent ${successCount} report(s). Reports are awaiting admin review. ${failedReports.length} report(s) remain saved locally.`);
                 updateLocalStorageCount();
-                if (log) log.innerText = 'All pending local reports uploaded to backend report panel.';
+                if (log) log.innerText = 'Upload finished. Any failed reports remain saved locally.';
             } else {
                 alert('Failed to connect to backend server. Stored reports remain saved locally.');
             }
