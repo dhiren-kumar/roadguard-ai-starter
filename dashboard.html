@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RoadGuard Edge AI - Live Multi-Damage Road Scanner</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <style>
         body { 
             font-family: Arial, sans-serif; 
@@ -177,7 +178,16 @@ button.action-btn:hover{background:#10553b}
     <strong>Live GPS</strong>
     <div id="gpsStatus" role="status" style="margin-top:6px">Waiting for GPS permission…</div>
     <div id="gpsCoords" style="margin-top:4px">Coordinates: Not available</div>
-    <div id="gpsPlace" style="margin-top:4px">Nearby road/place: Looking up…</div>
+    <div id="gpsPlace" style="margin-top:4px">Road/place name: Select the labelled road or nearby place on the map below.</div>
+  </div>
+  <div style="margin:10px 0;padding:12px;background:#f2f6f2;border:1px solid #dce5de;border-radius:8px;color:#405449;font-size:13px">
+    <strong>Choose report location</strong>
+    <p style="margin:6px 0 10px">The map opens at your GPS position. Zoom in and tap the road/place you want to report. Read its visible map label and enter it below if needed. No background name lookups are performed.</p>
+    <div id="reportLocationMap" style="height:260px;width:100%;border-radius:8px;z-index:1"></div>
+    <div id="selectedLocationCoords" style="margin-top:8px">Selected coordinates: Waiting for GPS…</div>
+    <label for="reportLocationName" style="margin-top:10px">Road / nearby place name (from map label)</label>
+    <input id="reportLocationName" type="text" maxlength="200" placeholder="Enter the road or nearby place name shown on the map" style="margin-bottom:8px">
+    <button type="button" id="useGpsLocation" class="action-btn" style="background:#475569">Use my current GPS location</button>
   </div>
 
             <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:8px;" id="localCountInfo">Stored Local Reports: 0</div>
@@ -187,6 +197,7 @@ button.action-btn:hover{background:#10553b}
         </div>
     </div>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <script>
         let contributor = null;
@@ -197,10 +208,10 @@ button.action-btn:hover{background:#10553b}
 
         let coords = { lat: null, lng: null };
         let currentLocationName = '';
+        let selectedReportCoords = null;
+        let locationMap = null;
+        let selectedLocationMarker = null;
         let gpsWatchId = null;
-        let lastGeocodeAt = 0;
-        let lastGeocodeCoords = null;
-        let geocodeInProgress = false;
         let ortSession = null;
         let isScanning = false;
         const MODEL_SIZE = 640;
@@ -234,41 +245,48 @@ button.action-btn:hover{background:#10553b}
 
         window.onload = () => updateLocalStorageCount();
 
-        function distanceMeters(a, b) {
-            const rad = value => value * Math.PI / 180;
-            const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
-            const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
-            return 6371000 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
-        }
 
-        async function updateLocationName(lat, lng, force = false) {
-            const now = Date.now();
-            const point = { lat, lng };
-            if (geocodeInProgress || (!force && now - lastGeocodeAt < 10000)) return;
-            if (!force && lastGeocodeCoords && distanceMeters(lastGeocodeCoords, point) < 30) return;
-            geocodeInProgress = true;
-            lastGeocodeAt = now;
-            lastGeocodeCoords = point;
-            const placeEl = document.getElementById('gpsPlace');
-            if (placeEl) placeEl.textContent = 'Nearby road/place: Updating…';
-            try {
-                const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' +
-                    encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lng) + '&zoom=18&addressdetails=1';
-                const response = await fetch(url, { headers: { Accept: 'application/json' } });
-                if (!response.ok) throw new Error('Place lookup unavailable');
-                const data = await response.json();
-                const a = data.address || {};
-                const road = a.road || a.pedestrian || a.residential || a.footway || a.path || a.cycleway;
-                const nearby = a.neighbourhood || a.suburb || a.quarter || a.village || a.town || a.city_district || a.city || a.county;
-                currentLocationName = road ? (nearby ? road + ', ' + nearby : road) :
-                    (a.amenity || a.tourism || a.shop || a.leisure || a.building || nearby || data.name || '');
-                if (placeEl) placeEl.textContent = 'Nearby road/place: ' + (currentLocationName || 'Name unavailable for this coordinate');
-            } catch (error) {
-                if (placeEl) placeEl.textContent = 'Nearby road/place: ' + (currentLocationName || 'Could not retrieve name; GPS coordinates are saved');
-            } finally {
-                geocodeInProgress = false;
+        function updateSelectedLocation(lat, lng, recenter = false) {
+            selectedReportCoords = { lat, lng };
+            const coordsEl = document.getElementById('selectedLocationCoords');
+            if (coordsEl) coordsEl.textContent = 'Selected coordinates: ' + lat.toFixed(6) + ', ' + lng.toFixed(6);
+            if (locationMap) {
+                if (!selectedLocationMarker) {
+                    selectedLocationMarker = L.marker([lat, lng], { draggable: true }).addTo(locationMap);
+                    selectedLocationMarker.on('dragend', event => {
+                        const point = event.target.getLatLng();
+                        updateSelectedLocation(point.lat, point.lng, false);
+                    });
+                } else {
+                    selectedLocationMarker.setLatLng([lat, lng]);
+                }
+                if (recenter) locationMap.setView([lat, lng], 17);
             }
         }
+
+        function initLocationPicker(lat, lng) {
+            const mapElement = document.getElementById('reportLocationMap');
+            if (!mapElement || !window.L) return;
+            if (!locationMap) {
+                locationMap = L.map(mapElement, { maxZoom: 19, scrollWheelZoom: true }).setView([lat, lng], 17);
+                const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(locationMap);
+                L.control.layers({ 'Road and place names': street }).addTo(locationMap);
+                locationMap.on('click', event => updateSelectedLocation(event.latlng.lat, event.latlng.lng, false));
+                setTimeout(() => locationMap.invalidateSize(), 150);
+            }
+            updateSelectedLocation(lat, lng, true);
+        }
+
+        document.getElementById('useGpsLocation').addEventListener('click', () => {
+            if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
+                if (log) log.innerText = 'Waiting for a valid GPS position.';
+                return;
+            }
+            updateSelectedLocation(coords.lat, coords.lng, true);
+        });
 
         function initGPS() {
             const statusEl = document.getElementById('gpsStatus');
@@ -285,7 +303,8 @@ button.action-btn:hover{background:#10553b}
                     coords.lng = pos.coords.longitude;
                     if (statusEl) statusEl.textContent = 'Live GPS active · accuracy ±' + Math.round(pos.coords.accuracy) + ' m · updated ' + new Date(pos.timestamp).toLocaleTimeString();
                     if (coordsEl) coordsEl.textContent = 'Coordinates: ' + coords.lat.toFixed(6) + ', ' + coords.lng.toFixed(6);
-                    updateLocationName(coords.lat, coords.lng);
+                    if (!selectedReportCoords) initLocationPicker(coords.lat, coords.lng);
+                    else if (!locationMap) initLocationPicker(coords.lat, coords.lng);
                     if (log) log.innerText = 'Live GPS locked: [' + coords.lat.toFixed(5) + ', ' + coords.lng.toFixed(5) + ']';
                 },
                 error => {
@@ -416,8 +435,8 @@ button.action-btn:hover{background:#10553b}
         }
 
         function storeReportLocally(damages, severity) {
-            const latitude = coords.lat;
-            const longitude = coords.lng;
+            const latitude = selectedReportCoords ? selectedReportCoords.lat : coords.lat;
+            const longitude = selectedReportCoords ? selectedReportCoords.lng : coords.lng;
             if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
                 if (log) log.innerText = 'Waiting for a valid GPS fix. No fallback location is used.';
                 return;
@@ -436,7 +455,7 @@ button.action-btn:hover{background:#10553b}
                 contributor_phone: contributor ? contributor.phone : '',
                 contributor_email: contributor ? contributor.email : '',
                 contributor_location: contributor ? contributor.locationText : '',
-                location_name: currentLocationName,
+                location_name: document.getElementById('reportLocationName').value.trim() || currentLocationName,
                 latitude: latitude,
                 longitude: longitude,
                 severity: severity,
