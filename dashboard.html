@@ -222,7 +222,7 @@
                         coords.lng = pos.coords.longitude;
                         if (log) log.innerText = `GPS Locked: [${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}]`;
                     },
-                    () => { if (log) log.innerText = 'GPS permission denied. Using default fallback location.'; },
+                    () => { if (log) log.innerText = 'GPS permission denied or unavailable. Reports require a valid GPS fix.'; },
                     { enableHighAccuracy: true }
                 );
             }
@@ -388,6 +388,7 @@
             }
 
             let successCount = 0;
+            const failedReports = [];
             for (let report of localReports) {
                 try {
                     const response = await fetch(BACKEND_URL, {
@@ -399,20 +400,23 @@
                             latitude: report.latitude,
                             longitude: report.longitude,
                             severity: report.severity,
+                            description: `Detected ${report.damage_count} road damage item(s) by on-device AI.`,
                             damage_type: `Multi-Damage Count: ${report.damage_count}`,
                             image_base64: report.image_base64
                         })
                     });
                     const result = await response.json();
                     if (response.ok && result.success) successCount++;
+                    else failedReports.push(report);
                 } catch (err) {
                     console.error("Sync error:", err);
+                    failedReports.push(report);
                 }
             }
 
+            localStorage.setItem('roadguard_local_reports', JSON.stringify(failedReports));
             if (successCount > 0) {
-                alert(`Successfully sent ${successCount} report(s). Reports are awaiting admin review.`);
-                localStorage.removeItem('roadguard_local_reports');
+                alert(`Successfully sent ${successCount} report(s). Reports are awaiting admin review. ${failedReports.length} report(s) remain saved locally.`);
                 updateLocalStorageCount();
                 if (log) log.innerText = 'All pending local reports uploaded to backend report panel.';
             } else {
@@ -422,4 +426,3 @@
     </script>
 </body>
 </html>
-```[Index Page](https://github.com/pulls)
