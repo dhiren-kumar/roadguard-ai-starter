@@ -18,6 +18,7 @@
         .badge-severe { background: #7f1d1d; color: #fca5a5; padding: 3px 8px; border-radius: 4px; font-weight: bold; }
         .badge-medium { background: #78350f; color: #fde047; padding: 3px 8px; border-radius: 4px; font-weight: bold; }
         .badge-low { background: #14532d; color: #86efac; padding: 3px 8px; border-radius: 4px; font-weight: bold; }
+        .repair-btn{background:#176b4b;color:#fff;border:0;border-radius:7px;padding:8px 11px;cursor:pointer}dialog{width:min(680px,92vw);max-height:85vh;overflow:auto;border:1px solid #dce5de;border-radius:14px;padding:22px;color:#17251f}dialog::backdrop{background:#0f172a99}.repair-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.repair-form label{display:flex;flex-direction:column;gap:5px;font-size:13px}.repair-form input,.repair-form select,.repair-form textarea{padding:9px;border:1px solid #dce5de;border-radius:7px;background:white;color:#17251f;min-width:0}.repair-form .wide{grid-column:1/-1}.repair-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}.repair-log{padding:10px;background:#f2f7f3;border-radius:8px;margin:8px 0;font-size:13px}.repair-log img{width:90px;height:65px;object-fit:cover;margin:6px}@media(max-width:600px){.repair-form{grid-template-columns:1fr}}
     </style>
 <link rel="stylesheet" href="css/style.css">
 <style>
@@ -48,14 +49,16 @@ a{color:#176b4b}
                     <th>Location / Road Name</th>
                     <th>Timestamp</th>
                     <th>Status Progress</th>
+                    <th>Maintenance</th>
                 </tr>
             </thead>
             <tbody id="reportTableBody">
-                <tr><td colspan="6" style="text-align:center;">Loading reports...</td></tr>
+                <tr><td colspan="7" style="text-align:center;">Loading reports...</td></tr>
             </tbody>
         </table>
     </div>
 
+    <dialog id="repairDialog"><h2 style="margin-top:0;color:#176b4b">Maintenance & repair tracking</h2><p id="repairReportLabel" style="color:#64748b"></p><form id="repairForm"><div class="repair-form"><label>Assigned staff / team<input id="repairStaff" maxlength="100"></label><label>Department<input id="repairDepartment" maxlength="120" placeholder="PWD / Municipality / contractor"></label><label>Priority<select id="repairPriority"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><label>Target completion date<input id="repairDueDate" type="date"></label><label class="wide">Repair note<textarea id="repairNote" rows="3" maxlength="1000"></textarea></label><label class="wide">Before / after repair photos (up to 2)<input id="repairPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><label class="wide">Photo caption<input id="repairPhotoCaption" maxlength="120"></label></div><div id="repairExisting" style="margin-top:14px"></div><div class="repair-actions"><button type="button" id="repairCancel">Close</button><button type="submit" class="repair-btn" id="repairSave">Save maintenance update</button></div></form></dialog>
     <script>
         const token = sessionStorage.getItem('roadguard_token');
         const currentUser = JSON.parse(sessionStorage.getItem('roadguard_user') || 'null');
@@ -90,6 +93,12 @@ a{color:#176b4b}
             sessionStorage.removeItem('roadguard_user');
             window.location.href = 'login.html?mode=admin';
         }
+        let activeRepairReport=null;
+        const repairDialog=document.getElementById('repairDialog');
+        document.getElementById('repairCancel').addEventListener('click',()=>repairDialog.close());
+        function renderRepairHistory(report){const host=document.getElementById('repairExisting');host.replaceChildren();const notes=report.maintenance_notes||[],history=report.repair_history||[],photos=report.repair_photos||[];const heading=document.createElement('h3');heading.textContent='Repair history';host.appendChild(heading);if(!notes.length&&!history.length&&!photos.length){const p=document.createElement('p');p.textContent='No repair activity recorded yet.';host.appendChild(p);}history.forEach(item=>{const p=document.createElement('p');p.className='repair-log';p.textContent=(item.from_status||'New')+' → '+(item.to_status||'Updated')+' · '+(item.changed_by||'Admin')+' · '+(item.changed_at?new Date(item.changed_at).toLocaleString():'');host.appendChild(p);});notes.forEach(item=>{const p=document.createElement('p');p.className='repair-log';p.textContent=(item.note||'')+' — '+(item.author||'Admin')+' · '+(item.created_at?new Date(item.created_at).toLocaleString():'');host.appendChild(p);});photos.forEach(item=>{const wrap=document.createElement('div');wrap.className='repair-log';const img=document.createElement('img');img.src=item.image_url;img.alt=item.caption||'Repair evidence';img.loading='lazy';wrap.appendChild(img);const caption=document.createElement('span');caption.textContent=item.caption||'Repair photo';wrap.appendChild(caption);host.appendChild(wrap);});}
+        function openRepairManager(report){activeRepairReport=report;document.getElementById('repairReportLabel').textContent=(report.damage_type||'Road damage')+' · '+(report.location_name||report.contributor_location||'Location not specified');document.getElementById('repairStaff').value=report.maintenance_assignment?.staff_name||'';document.getElementById('repairDepartment').value=report.maintenance_assignment?.department||'';document.getElementById('repairPriority').value=report.priority||'medium';document.getElementById('repairDueDate').value=report.target_completion_date?new Date(report.target_completion_date).toISOString().slice(0,10):'';document.getElementById('repairNote').value='';document.getElementById('repairPhotos').value='';document.getElementById('repairPhotoCaption').value='';renderRepairHistory(report);repairDialog.showModal();}
+        document.getElementById('repairForm').addEventListener('submit',async event=>{event.preventDefault();if(!activeRepairReport)return;const button=document.getElementById('repairSave');button.disabled=true;button.textContent='Saving…';try{const files=[...document.getElementById('repairPhotos').files];if(files.length>2)throw new Error('Choose no more than two photos.');const repair_photos=await Promise.all(files.map(file=>new Promise((resolve,reject)=>{if(file.size>3.7*1024*1024){reject(new Error(file.name+' is larger than 3.7 MB.'));return;}const reader=new FileReader();reader.onload=()=>resolve({image_base64:reader.result,caption:document.getElementById('repairPhotoCaption').value.trim()});reader.onerror=()=>reject(new Error('Could not read '+file.name));reader.readAsDataURL(file);})));const payload={staff_name:document.getElementById('repairStaff').value,department:document.getElementById('repairDepartment').value,priority:document.getElementById('repairPriority').value,target_completion_date:document.getElementById('repairDueDate').value,note:document.getElementById('repairNote').value,repair_photos};await api('/api/reports/'+encodeURIComponent(activeRepairReport.id)+'/maintenance',{method:'PATCH',body:JSON.stringify(payload)});repairDialog.close();await loadAdminReports();}catch(error){alert(error.message);}finally{button.disabled=false;button.textContent='Save maintenance update';}});
         async function loadAdminReports() {
             try {
                 const result = await api('/api/reports');
@@ -98,7 +107,7 @@ a{color:#176b4b}
                 reports.sort((a,b) => (rank[b.severity] || 0) - (rank[a.severity] || 0));
                 tbody.innerHTML = '';
                 if (!reports.length) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No road damage reports yet.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center">No road damage reports yet.</td></tr>';
                     return;
                 }
                 reports.forEach(r => {
@@ -118,7 +127,8 @@ a{color:#176b4b}
                             <option value="under-construction" ${r.status==='under-construction'?'selected':''}>Under construction</option>
                             <option value="resolved" ${r.status==='resolved'?'selected':''}>Resolved</option>
                             <option value="rejected" ${r.status==='rejected'?'selected':''}>Rejected</option>
-                        </select></td>`;
+                        </select></td>
+                        <td><button type="button" class="repair-btn">Manage repair</button><br><small>${escapeHtml(r.maintenance_assignment?.staff_name || 'Unassigned')}</small></td>`;
                     const photoCell = tr.querySelector('.report-photo-cell');
                     const photoUrl = typeof r.image_url === 'string' ? r.image_url : r.image_base64;
                     const validPhoto = typeof photoUrl === 'string' && (/^https:\/\/res\.cloudinary\.com\/[A-Za-z0-9_-]+\//.test(photoUrl) || /^data:image\/(jpeg|jpg|png|webp);base64,/.test(photoUrl));
@@ -133,10 +143,11 @@ a{color:#176b4b}
                         link.appendChild(img); photoCell.appendChild(link);
                     } else { photoCell.textContent = 'No image'; }
                     tbody.appendChild(tr);
+                    tr.querySelector('.repair-btn').addEventListener('click',()=>openRepairManager(r));
                 });
             } catch (error) {
                 console.error(error);
-                tbody.innerHTML = `<tr><td colspan="6">${escapeHtml(error.message)}</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7">${escapeHtml(error.message)}</td></tr>`;
             }
         }
         async function updateStatus(id, status) {
