@@ -27,7 +27,13 @@ function present(report) {
         contributor_phone: r.contributorPhone || "",
         contributor_email: r.contributorEmail || "",
         contributor_location: r.contributorLocation || "",
-        timestamp: r.createdAt
+        timestamp: r.createdAt,
+        maintenance_assignment: { staff_name: r.maintenanceAssignment?.staffName || "", department: r.maintenanceAssignment?.department || "" },
+        priority: r.repairPriority || "medium",
+        target_completion_date: r.targetCompletionDate || null,
+        maintenance_notes: (r.maintenanceNotes || []).map(n => ({ note: n.note, author: n.author, created_at: n.createdAt })),
+        repair_photos: (r.repairPhotos || []).map(p => ({ image_url: p.imageUrl, caption: p.caption, uploaded_at: p.uploadedAt })),
+        repair_history: (r.repairHistory || []).map(h => ({ from_status: h.fromStatus, to_status: h.toStatus, note: h.note, changed_by: h.changedBy, changed_at: h.changedAt }))
     };
 }
 
@@ -101,7 +107,13 @@ router.get("/public/:id", async (req, res) => {
                         boundingBox: d.boundingBox || null
                     }))
                 })),
-                damage_count: damageCount
+                damage_count: damageCount,
+                maintenance_assignment: { staff_name: report.maintenanceAssignment?.staffName || "", department: report.maintenanceAssignment?.department || "" },
+                repair_priority: report.repairPriority || "medium",
+                target_completion_date: report.targetCompletionDate || null,
+                maintenance_notes: (report.maintenanceNotes || []).map(n => ({ note: n.note, author: n.author, created_at: n.createdAt })),
+                repair_photos: (report.repairPhotos || []).map(p => ({ image_url: p.imageUrl, caption: p.caption, uploaded_at: p.uploadedAt })),
+                repair_history: (report.repairHistory || []).map(h => ({ from_status: h.fromStatus, to_status: h.toStatus, note: h.note, changed_by: h.changedBy, changed_at: h.changedAt }))
             }
         });
     } catch (error) {
@@ -227,6 +239,7 @@ router.patch("/:id/maintenance", protect, adminOnly, async (req, res) => {
         if (!report) return res.status(404).json({ success: false, message: "Report not found." });
 
         const body = req.body || {};
+        if (!report.maintenanceAssignment) report.maintenanceAssignment = {};
         if (body.staff_name !== undefined) {
             if (typeof body.staff_name !== "string" || body.staff_name.trim().length > 100)
                 return res.status(400).json({ success: false, message: "Staff name must be 100 characters or fewer." });
