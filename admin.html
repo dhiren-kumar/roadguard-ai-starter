@@ -46,88 +46,89 @@
     </div>
 
     <script>
-        const adminUser = JSON.parse(localStorage.getItem('adminUser'));
-        if (!adminUser || adminUser.role !== 'admin') {
-            window.location.href = 'login.html';
-        }
+        const token = sessionStorage.getItem('roadguard_token');
+        const currentUser = JSON.parse(sessionStorage.getItem('roadguard_user') || 'null');
+        const tbody = document.getElementById('reportTableBody');
 
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+        }
+        async function api(path, options = {}) {
+            const response = await fetch(path, {
+                ...options,
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(options.headers || {}) }
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Request failed.');
+            return data;
+        }
+        async function verifyAdmin() {
+            if (!token || !currentUser || currentUser.role !== 'admin') {
+                window.location.href = 'login.html'; return false;
+            }
+            try {
+                const data = await api('/api/auth/me');
+                if (data.user.role !== 'admin') throw new Error('Admin access required.');
+                return true;
+            } catch (error) {
+                sessionStorage.clear(); window.location.href = 'login.html'; return false;
+            }
+        }
         function logoutAdmin() {
-            localStorage.removeItem('adminUser');
+            sessionStorage.removeItem('roadguard_token');
+            sessionStorage.removeItem('roadguard_user');
             window.location.href = 'login.html';
         }
-
         async function loadAdminReports() {
             try {
-                const res = await fetch('/api/reports');
-                let reports = await res.json();
-
-                const severityRank = { 'Severe': 3, 'Medium': 2, 'Low': 1 };
-                reports.sort((a, b) => (severityRank[b.severity] || 0) - (severityRank[a.severity] || 0));
-
-                const tbody = document.getElementById('reportTableBody');
+                const result = await api('/api/reports');
+                const reports = result.data || [];
+                const rank = { high: 3, medium: 2, low: 1 };
+                reports.sort((a,b) => (rank[b.severity] || 0) - (rank[a.severity] || 0));
                 tbody.innerHTML = '';
-
-                if (reports.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">No road damage reports submitted yet.</td></tr>';
+                if (!reports.length) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center">No road damage reports yet.</td></tr>';
                     return;
                 }
-
                 reports.forEach(r => {
-                    let badgeClass = 'badge-medium';
-                    if (r.severity === 'Severe') badgeClass = 'badge-severe';
-                    if (r.severity === 'Low') badgeClass = 'badge-low';
-
+                    const severity = String(r.severity || 'medium').toLowerCase();
+                    const badge = severity === 'high' ? 'badge-severe' : (severity === 'low' ? 'badge-low' : 'badge-medium');
+                    const coords = `${r.latitude},${r.longitude}`;
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
-                        <td><img src="${r.image_base64}" width="100px" height="70px"/></td>
-                        <td>
-                            <b>${r.damage_type}</b><br>
-                            <span class="${badgeClass}">${r.severity}</span>
-                        </td>
-                        <td>
-                            ${r.contributor_name}<br>
-                            <small style="color:#94a3b8;">📞 ${r.contributor_phone}</small>
-                        </td>
-                        <td>
-                            <small>${r.location_name}</small><br>
-                            <a href="https://maps.google.com/?q=${r.latitude},${r.longitude}" target="_blank" style="font-size:0.8rem; color:#38bdf8;">Map Coordinates</a>
-                        </td>
-                        <td><small>${new Date(r.timestamp).toLocaleString()}</small></td>
-                        <td>
-                            <select onchange="updateStatus('${r.id}', this.value)">
-                                <option value="pending" ${r.status === 'pending' ? 'selected' : ''}>Pending Review</option>
-                                <option value="under-construction" ${r.status === 'under-construction' ? 'selected' : ''}>Under Construction</option>
-                                <option value="completed" ${r.status === 'completed' ? 'selected' : ''}>Completed / Resolved</option>
-                            </select>
-                        </td>
-                    `;
+                        <td>${r.image_base64 ? `<img src="${escapeHtml(r.image_base64)}" width="100" height="70" alt="Road damage">` : 'No image'}</td>
+                        <td><b>${escapeHtml(r.damage_type)}</b><br><span class="${badge}">${escapeHtml(severity)}</span></td>
+                        <td>${escapeHtml(r.contributor_name)}</td>
+                        <td><a href="https://maps.google.com/?q=${encodeURIComponent(coords)}" target="_blank" rel="noopener">View location</a><br><small>${escapeHtml(coords)}</small></td>
+                        <td><small>${escapeHtml(new Date(r.timestamp).toLocaleString())}</small></td>
+                        <td><select aria-label="Report status" onchange="updateStatus('${escapeHtml(r.id)}',this.value)">
+                            <option value="pending" ${r.status==='pending'?'selected':''}>Pending</option>
+                            <option value="approved" ${r.status==='approved'?'selected':''}>Approved</option>
+                            <option value="under-construction" ${r.status==='under-construction'?'selected':''}>Under construction</option>
+                            <option value="resolved" ${r.status==='resolved'?'selected':''}>Resolved</option>
+                            <option value="rejected" ${r.status==='rejected'?'selected':''}>Rejected</option>
+                        </select></td>`;
                     tbody.appendChild(tr);
                 });
-            } catch (err) {
-                console.error('Error loading admin reports:', err);
+            } catch (error) {
+                console.error(error);
+                tbody.innerHTML = `<tr><td colspan="6">${escapeHtml(error.message)}</td></tr>`;
             }
         }
-
-        async function updateStatus(id, newStatus) {
+        async function updateStatus(id, status) {
             try {
-                const res = await fetch(`/api/reports/${id}`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status: newStatus })
+                await api(`/api/reports/${encodeURIComponent(id)}/status`, {
+                    method: 'PATCH', body: JSON.stringify({ status })
                 });
-                const data = await res.json();
-                if (data.success) {
-                    loadAdminReports();
-                } else {
-                    alert('Failed to update status.');
-                }
-            } catch (err) {
-                alert('Server connection error.');
-            }
+                await loadAdminReports();
+            } catch (error) { alert(error.message); }
         }
-
-        loadAdminReports();
-        setInterval(loadAdminReports, 10000);
-    </script>
+        (async () => {
+            if (await verifyAdmin()) {
+                await loadAdminReports();
+                setInterval(loadAdminReports, 15000);
+            }
+        })();
+    </script>ipt>
 </body>
 </html>

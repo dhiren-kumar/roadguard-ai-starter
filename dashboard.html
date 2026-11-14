@@ -130,17 +130,11 @@
 <body>
 
     <div id="onboardModal">
-        <h3>Contributor Registration</h3>
-        <p style="font-size:0.85rem; color:#94a3b8; text-align:center;">Enter your details to start multi-damage AI scanning.</p>
+        <h3>Contributor Access</h3>
+        <p style="font-size:0.85rem; color:#94a3b8; text-align:center;">Sign in with your verified contributor account to start scanning.</p>
         
-        <label for="contribName">Your Full Name</label>
-        <input type="text" id="contribName" placeholder="e.g. Rahul Sharma" required>
-
-        <label for="contribPhone">Phone Number</label>
-        <input type="tel" id="contribPhone" placeholder="e.g. 9876543210" required>
-
-        <button class="action-btn" onclick="startContributorSession()">Start Edge AI Scanner</button>
-        <a href="[Index Page](https://github.com/pulls)" class="back-btn" style="display:block; text-align:center; margin-top:15px; background:transparent; color:#94a3b8;">← Back to Map</a>
+        <p id="loginPrompt">Checking your sign-in status...</p><button class="action-btn" onclick="startContributorSession()">Start Edge AI Scanner</button><a href="login.html" class="back-btn" style="display:block;text-align:center;margin-top:12px;">Sign in / Create account</a>
+        <a href="index.html" class="back-btn" style="display:block; text-align:center; margin-top:15px; background:transparent; color:#94a3b8;">← Back to Map</a>
     </div>
 
     <div id="scannerContainer">
@@ -170,6 +164,8 @@
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <script>
         let contributor = null;
+        const authToken = sessionStorage.getItem("roadguard_token");
+        const signedInUser = JSON.parse(sessionStorage.getItem("roadguard_user") || "null");
         const video = document.getElementById('cam');
         const canvas = document.getElementById('canvas');
         const log = document.getElementById('logBox');
@@ -181,37 +177,39 @@
         const MODEL_SIZE = 640;
         const DAMAGE_CLASSES = ['Longitudinal Crack', 'Transverse Crack', 'Alligator Crack', 'Pothole'];
 
-        const BACKEND_URL = window.location.hostname.includes('github.io') 
-            ? 'https://roadguard-backend.onrender.com/api/reports' 
-            : '/api/reports';
+        const BACKEND_URL = '/api/reports';
 
-        function startContributorSession() {
-            const name = document.getElementById('contribName').value.trim();
-            const phone = document.getElementById('contribPhone').value.trim();
-
-            if (!name || !phone) {
-                alert('Please enter both your name and phone number.');
+        async function startContributorSession() {
+            if (!authToken || !signedInUser) {
+                window.location.href = 'login.html';
                 return;
             }
-
-            contributor = { name, phone };
-            localStorage.setItem('roadguard_contributor', JSON.stringify(contributor));
-
-            document.getElementById('onboardModal').style.display = 'none';
-            document.getElementById('scannerContainer').style.display = 'flex';
-            document.getElementById('userMeta').innerText = `${name} (${phone})`;
-
-            updateLocalStorageCount();
-            initGPS();
-            initCameraAndModel();
+            try {
+                const response = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${authToken}` } });
+                const data = await response.json();
+                if (!response.ok || !data.user || data.user.role !== 'contributor') {
+                    sessionStorage.clear();
+                    window.location.href = 'login.html';
+                    return;
+                }
+                contributor = data.user;
+                document.getElementById('onboardModal').style.display = 'none';
+                document.getElementById('scannerContainer').style.display = 'flex';
+                document.getElementById('welcomeHeader').innerText = `Welcome, ${contributor.name}`;
+                document.getElementById('userMeta').innerText = contributor.email;
+                updateLocalStorageCount();
+                initGPS();
+                initCameraAndModel();
+            } catch (error) {
+                document.getElementById('loginPrompt').innerText = 'Could not verify your session. Please sign in again.';
+            }
         }
 
         window.onload = () => {
-            const saved = localStorage.getItem('roadguard_contributor');
-            if (saved) {
-                contributor = JSON.parse(saved);
-                document.getElementById('contribName').value = contributor.name;
-                document.getElementById('contribPhone').value = contributor.phone;
+            if (!authToken || !signedInUser || signedInUser.role !== 'contributor') {
+                document.getElementById('loginPrompt').innerText = 'Please sign in with a verified contributor account.';
+            } else {
+                document.getElementById('loginPrompt').innerText = `Signed in as ${signedInUser.email}`;
             }
             updateLocalStorageCount();
         };
@@ -224,7 +222,7 @@
                         coords.lng = pos.coords.longitude;
                         if (log) log.innerText = `GPS Locked: [${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}]`;
                     },
-                    () => { if (log) log.innerText = 'GPS permission denied. Using default fallback location.'; },
+                    () => { if (log) log.innerText = 'GPS permission denied or unavailable. Reports require a valid GPS fix.'; },
                     { enableHighAccuracy: true }
                 );
             }
@@ -341,8 +339,12 @@
         }
 
         function storeReportLocally(damages, severity) {
-            const latitude = coords.lat || 20.2961;
-            const longitude = coords.lng || 85.8245;
+            const latitude = coords.lat;
+            const longitude = coords.lng;
+            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                if (log) log.innerText = 'Waiting for a valid GPS fix. No fallback location is used.';
+                return;
+            }
 
             canvas.width = 480;
             canvas.height = 360;
@@ -386,32 +388,37 @@
             }
 
             let successCount = 0;
+            const failedReports = [];
             for (let report of localReports) {
                 try {
                     const response = await fetch(BACKEND_URL, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
                         body: JSON.stringify({
                             contributor_name: report.contributor_name,
                             contributor_phone: report.contributor_phone,
                             latitude: report.latitude,
                             longitude: report.longitude,
                             severity: report.severity,
+                            description: `Detected ${report.damage_count} road damage item(s) by on-device AI.`,
                             damage_type: `Multi-Damage Count: ${report.damage_count}`,
                             image_base64: report.image_base64
                         })
                     });
-                    if (response.ok) successCount++;
+                    const result = await response.json();
+                    if (response.ok && result.success) successCount++;
+                    else failedReports.push(report);
                 } catch (err) {
                     console.error("Sync error:", err);
+                    failedReports.push(report);
                 }
             }
 
+            localStorage.setItem('roadguard_local_reports', JSON.stringify(failedReports));
             if (successCount > 0) {
-                alert(`Successfully sent ${successCount} report(s) to the report panel/database!`);
-                localStorage.removeItem('roadguard_local_reports');
+                alert(`Successfully sent ${successCount} report(s). Reports are awaiting admin review. ${failedReports.length} report(s) remain saved locally.`);
                 updateLocalStorageCount();
-                if (log) log.innerText = 'All pending local reports uploaded to backend report panel.';
+                if (log) log.innerText = 'Upload finished. Any failed reports remain saved locally.';
             } else {
                 alert('Failed to connect to backend server. Stored reports remain saved locally.');
             }
@@ -419,4 +426,3 @@
     </script>
 </body>
 </html>
-```[Index Page](https://github.com/pulls)
