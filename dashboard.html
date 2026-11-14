@@ -1,35 +1,119 @@
-async function initCameraAndModel() {
-            try {
-                let stream;
-                try {
-                    // Try opening the back camera (environment) first
-                    stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: { exact: 'environment' } } 
-                    });
-                } catch (err1) {
-                    console.warn("Exact environment camera not found, falling back to general video...");
-                    // Fallback to any available camera on the mobile device
-                    stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: true 
-                    });
-                }
-
-                video.srcObject = stream;
-                video.onloadeddata = async () => {
-                    try {
-                        ortSession = await ort.InferenceSession.create('./model/best.onnx', { executionProviders: ['wasm'] });
-                        aiBadge.innerText = 'Edge AI Ready: Running locally in device RAM';
-                        startAutoDetectionLoop();
-                    } catch (err) {
-                        console.error(err);
-                        aiBadge.innerText = 'AI Error: Ensure /model/best.onnx is uploaded.';
-                    }
-                };
-            } catch (err) {
-                console.error("Camera Hardware Error:", err);
-                if (log) {
-                    log.innerText = `Camera Error: [${err.name}] ${err.message}`;
-                }
-                alert(`Camera access failed: ${err.message}. Please check your browser permissions.`);
-            }
-        }
+<style>
+    body { 
+        font-family: Arial, sans-serif; 
+        background: #0f172a; 
+        color: white; 
+        display: flex; 
+        flex-direction: column; 
+        align-items: center; 
+        padding: 15px; 
+        margin: 0; 
+        min-height: 100vh; 
+        box-sizing: border-box;
+    }
+    .header { 
+        width: 100%; 
+        max-width: 440px; 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        margin-bottom: 10px; 
+        box-sizing: border-box;
+    }
+    .back-btn { 
+        background: #334155; 
+        color: white; 
+        border: none; 
+        padding: 6px 12px; 
+        border-radius: 4px; 
+        cursor: pointer; 
+        text-decoration: none; 
+        font-size: 0.85rem; 
+    }
+    #onboardModal { 
+        background: #1e293b; 
+        padding: 1.5rem; 
+        border-radius: 8px; 
+        width: 100%; 
+        max-width: 440px; 
+        box-sizing: border-box; 
+        border: 1px solid #334155; 
+        margin-top: 20px; 
+    }
+    #onboardModal h3 { margin-top: 0; color: #38bdf8; text-align: center; }
+    
+    #scannerContainer { 
+        display: none; 
+        width: 100%; 
+        max-width: 440px; 
+        flex-direction: column; 
+        align-items: center; 
+        box-sizing: border-box;
+    }
+    .vid-box { 
+        width: 100%; 
+        max-width: 440px; 
+        margin-bottom: 15px; 
+        box-sizing: border-box;
+    }
+    video, canvas { 
+        width: 100%; 
+        height: auto; 
+        border-radius: 8px; 
+        border: 2px solid #334155; 
+        background: #1e293b; 
+        box-sizing: border-box; 
+        display: block;
+    }
+    .panel { 
+        background: #1e293b; 
+        padding: 1.2rem; 
+        border-radius: 8px; 
+        width: 100%; 
+        max-width: 440px; 
+        box-sizing: border-box; 
+        border: 1px solid #334155; 
+    }
+    label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: #cbd5e1; }
+    input, select { 
+        width: 100%; 
+        padding: 0.7rem; 
+        border-radius: 4px; 
+        border: 1px solid #475569; 
+        background: #0f172a; 
+        color: white; 
+        margin-bottom: 15px; 
+        box-sizing: border-box; 
+    }
+    button.action-btn { 
+        background: #22c55e; 
+        color: white; 
+        border: none; 
+        padding: 0.8rem; 
+        border-radius: 4px; 
+        width: 100%; 
+        font-weight: bold; 
+        cursor: pointer; 
+        box-sizing: border-box;
+    }
+    button.action-btn:hover { background: #16a34a; }
+    .ai-badge { 
+        margin-bottom: 12px; 
+        padding: 10px; 
+        background: #0f172a; 
+        border: 1px solid #3b82f6; 
+        border-radius: 4px; 
+        font-size: 0.85rem; 
+        color: #93c5fd; 
+        text-align: center; 
+        box-sizing: border-box;
+    }
+    .log { 
+        margin-top: 12px; 
+        font-size: 0.85rem; 
+        background: #334155; 
+        padding: 10px; 
+        border-radius: 4px; 
+        box-sizing: border-box;
+    }
+</style>
