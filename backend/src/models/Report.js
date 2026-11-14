@@ -6,8 +6,13 @@ const reportSchema = new mongoose.Schema(
         submittedBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
-            required: true
+            required: false,
+            default: null
         },
+        contributorName: { type: String, required: true, trim: true, maxlength: 100 },
+        contributorPhone: { type: String, required: true, trim: true, maxlength: 20 },
+        contributorEmail: { type: String, trim: true, maxlength: 254 },
+        contributorLocation: { type: String, trim: true, maxlength: 200 },
 
         location: {
             type: {
