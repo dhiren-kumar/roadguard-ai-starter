@@ -38,6 +38,11 @@ const adminOnly = (req, res, next) => {
     return next();
 };
 
+const staffOnly = (req, res, next) => {
+    if (!req.user || req.user.role !== "staff") return res.status(403).json({ success: false, message: "Maintenance staff access required." });
+    return next();
+};
+
 const contributorOnly = (req, res, next) => {
     if (!req.user || req.user.role !== "contributor") {
         return res.status(403).json({ success: false, message: "Contributor access required." });
@@ -45,4 +50,4 @@ const contributorOnly = (req, res, next) => {
     return next();
 };
 
-module.exports = { protect, adminOnly, contributorOnly };
+module.exports = { protect, adminOnly, contributorOnly, staffOnly };
