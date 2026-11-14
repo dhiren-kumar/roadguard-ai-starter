@@ -134,4 +134,36 @@ router.get("/me", protect, (req, res) => {
     });
 });
 
+
+router.get("/staff", protect, require("../middleware/auth").adminOnly, async (req, res) => {
+    try {
+        const staff = await User.find({ role: "staff" }).select("name email locationText isEmailVerified createdAt").sort({ name: 1 }).lean();
+        return res.json({ success: true, data: staff });
+    } catch (error) {
+        console.error("Staff list error:", error);
+        return res.status(500).json({ success: false, message: "Unable to load maintenance staff." });
+    }
+});
+
+router.post("/staff", protect, require("../middleware/auth").adminOnly, async (req, res) => {
+    try {
+        const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+        const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
+        const password = typeof req.body.password === "string" ? req.body.password : "";
+        const department = typeof req.body.department === "string" ? req.body.department.trim().slice(0, 120) : "";
+        if (!name || name.length > 100 || !EMAIL_RE.test(email) || password.length < 12 || password.length > 72) {
+            return res.status(400).json({ success: false, message: "Enter a valid name, email and a password of 12–72 characters." });
+        }
+        const user = await User.create({
+            name, email, passwordHash: await bcrypt.hash(password, 12),
+            locationText: department, role: "staff", isEmailVerified: true
+        });
+        return res.status(201).json({ success: true, message: "Maintenance staff account created.", data: { id: user._id, name: user.name, email: user.email, department: user.locationText } });
+    } catch (error) {
+        if (error && error.code === 11000) return res.status(409).json({ success: false, message: "That email address already exists." });
+        console.error("Create staff error:", error);
+        return res.status(500).json({ success: false, message: "Unable to create staff account." });
+    }
+});
+
 module.exports = router;
