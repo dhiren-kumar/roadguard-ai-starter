@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RoadGuard - Login & Verification</title>
+    <title>RoadGuard - Admin Login</title>
     <style>
         body { font-family: Arial, sans-serif; background: #0f172a; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #1e293b; padding: 2rem; border-radius: 8px; width: 100%; max-width: 380px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .card { background: #1e293b; padding: 2rem; border-radius: 8px; width: 100%; max-width: 380px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); border: 1px solid #334155; }
         h2 { margin-top: 0; text-align: center; color: #38bdf8; }
         label { display: block; margin-bottom: 6px; font-size: 0.85rem; color: #cbd5e1; }
         input { width: 100%; padding: 0.75rem; margin-bottom: 1rem; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; box-sizing: border-box; }
@@ -18,83 +18,27 @@
 </head>
 <body>
     <div class="card">
-        <h2>RoadGuard... Portal</h2>
-        
-        <div id="loginForm">
-            <label for="email">Email Address</label>
-            <input type="email" id="email" placeholder="name@example.com" required>
+        <h2>Admin Portal Login</h2>
+        <label for="email">Admin Email</label>
+        <input type="email" id="email" value="admin@roadguard.local" required>
 
-            <label for="password">Password</label>
-            <input type="password" id="password" placeholder="••••••••" required>
+        <label for="password">Password</label>
+        <input type="password" id="password" value="RoadGuard@123" required>
 
-            <button onclick="handleLoginRequest()">Continue / Request Verification</button>
-        </div>
-
-        <div id="verifySection" style="display:none; margin-top:10px;">
-            <p style="font-size:0.85rem; color:#38bdf8; text-align:center;">Enter the 6-digit verification code sent to your email:</p>
-            <input type="text" id="otpInput" placeholder="123456" maxlength="6" style="text-align:center; font-size:1.2rem; letter-spacing:4px;">
-            <button onclick="verifyAndLogin()" style="background:#22c55e;">Verify & Enter Dashboard</button>
-        </div>
-
+        <button onclick="handleAdminLogin()">Login as Admin</button>
         <a href="index.html" class="back-link">← Back to Public Map</a>
     </div>
 
     <script>
-        async function handleLoginRequest() {
+        function handleAdminLogin() {
             const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value.trim();
 
-            if (!email || !password) {
-                alert('Please fill in both email and password.');
-                return;
-            }
-
-            // Demo Admin Bypass
             if (email === 'admin@roadguard.local' && password === 'RoadGuard@123') {
-                localStorage.setItem('user', JSON.stringify({ email, role: 'admin', name: 'Administrator' }));
+                localStorage.setItem('adminUser', JSON.stringify({ email, role: 'admin' }));
                 window.location.href = 'admin.html';
-                return;
-            }
-
-            // Request Email OTP for contributors
-            try {
-                const res = await fetch('/api/auth/send-verification', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    document.getElementById('loginForm').style.display = 'none';
-                    document.getElementById('verifySection').style.display = 'block';
-                    alert('Verification code sent to your email!');
-                } else {
-                    alert(data.error || 'Failed to send verification code.');
-                }
-            } catch (err) {
-                alert('Server connection error. Ensure server.js is running.');
-            }
-        }
-
-        async function verifyAndLogin() {
-            const email = document.getElementById('email').value.trim();
-            const code = document.getElementById('otpInput').value.trim();
-
-            try {
-                const res = await fetch('/api/auth/verify-code', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, code })
-                });
-                const data = await res.json();
-                if (data.success) {
-                    localStorage.setItem('user', JSON.stringify({ email, role: 'contributor', name: email.split('@')[0] }));
-                    window.location.href = 'dashboard.html';
-                } else {
-                    alert(data.error || 'Invalid verification code.');
-                }
-            } catch (err) {
-                alert('Verification failed.');
+            } else {
+                alert('Invalid admin credentials. Use admin@roadguard.local / RoadGuard@123');
             }
         }
     </script>

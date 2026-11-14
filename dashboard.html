@@ -3,56 +3,420 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RoadGuard Edge AI - Live Road Capture</title>
+    <title>RoadGuard Edge AI - Live Multi-Damage Road Scanner</title>
     <style>
-        body { font-family: Arial, sans-serif; background: #0f172a; color: white; display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
-        .header { width: 100%; max-width: 500px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .logout { background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
-        .vid-box { width: 100%; max-width: 500px; margin-bottom: 15px; }
-        video, canvas { width: 100%; border-radius: 8px; border: 2px solid #334155; background: #1e293b; }
-        .panel { background: #1e293b; padding: 1.5rem; border-radius: 8px; width: 100%; max-width: 500px; box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            background: #0f172a; 
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            padding: 15px; 
+            margin: 0; 
+            min-height: 100vh; 
+            box-sizing: border-box;
+        }
+        .header { 
+            width: 100%; 
+            max-width: 440px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 10px; 
+            box-sizing: border-box;
+        }
+        .back-btn { 
+            background: #334155; 
+            color: white; 
+            border: none; 
+            padding: 6px 12px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            text-decoration: none; 
+            font-size: 0.85rem; 
+        }
+        #onboardModal { 
+            background: #1e293b; 
+            padding: 1.5rem; 
+            border-radius: 8px; 
+            width: 100%; 
+            max-width: 440px; 
+            box-sizing: border-box; 
+            border: 1px solid #334155; 
+            margin-top: 20px; 
+        }
+        #onboardModal h3 { margin-top: 0; color: #38bdf8; text-align: center; }
+        
+        #scannerContainer { 
+            display: none; 
+            width: 100%; 
+            max-width: 440px; 
+            flex-direction: column; 
+            align-items: center; 
+            box-sizing: border-box;
+        }
+        .vid-box { 
+            width: 100%; 
+            max-width: 440px; 
+            margin-bottom: 15px; 
+            box-sizing: border-box;
+        }
+        video, canvas { 
+            width: 100%; 
+            height: auto; 
+            border-radius: 8px; 
+            border: 2px solid #334155; 
+            background: #1e293b; 
+            box-sizing: border-box; 
+            display: block;
+        }
+        .panel { 
+            background: #1e293b; 
+            padding: 1.2rem; 
+            border-radius: 8px; 
+            width: 100%; 
+            max-width: 440px; 
+            box-sizing: border-box; 
+            border: 1px solid #334155; 
+        }
         label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: #cbd5e1; }
-        select { width: 100%; padding: 0.65rem; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; margin-bottom: 15px; }
-        button.submit-btn { background: #22c55e; color: white; border: none; padding: 0.8rem; border-radius: 4px; width: 100%; font-weight: bold; cursor: pointer; }
-        button.submit-btn:hover { background: #16a34a; }
-        .ai-badge { margin-bottom: 12px; padding: 10px; background: #0f172a; border: 1px solid #3b82f6; border-radius: 4px; font-size: 0.85rem; color: #93c5fd; }
-        .log { margin-top: 12px; font-size: 0.85rem; background: #334155; padding: 10px; border-radius: 4px; }
+        input { 
+            width: 100%; 
+            padding: 0.7rem; 
+            border-radius: 4px; 
+            border: 1px solid #475569; 
+            background: #0f172a; 
+            color: white; 
+            margin-bottom: 15px; 
+            box-sizing: border-box; 
+        }
+        button.action-btn { 
+            background: #22c55e; 
+            color: white; 
+            border: none; 
+            padding: 0.8rem; 
+            border-radius: 4px; 
+            width: 100%; 
+            font-weight: bold; 
+            cursor: pointer; 
+            box-sizing: border-box;
+            margin-top: 8px;
+        }
+        button.action-btn:hover { background: #16a34a; }
+        .ai-badge { 
+            margin-bottom: 12px; 
+            padding: 10px; 
+            background: #0f172a; 
+            border: 1px solid #3b82f6; 
+            border-radius: 4px; 
+            font-size: 0.85rem; 
+            color: #93c5fd; 
+            text-align: center; 
+            box-sizing: border-box;
+        }
+        .log { 
+            margin-top: 12px; 
+            font-size: 0.85rem; 
+            background: #334155; 
+            padding: 10px; 
+            border-radius: 4px; 
+            box-sizing: border-box;
+            max-height: 120px;
+            overflow-y: auto;
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div>
-            <h3 style="margin:0;">Edge AI Road Scanner</h3>
-            <small id="userWelcome" style="color:#94a3b8;"></small>
+
+    <div id="onboardModal">
+        <h3>Contributor Registration</h3>
+        <p style="font-size:0.85rem; color:#94a3b8; text-align:center;">Enter your details to start multi-damage AI scanning.</p>
+        
+        <label for="contribName">Your Full Name</label>
+        <input type="text" id="contribName" placeholder="e.g. Rahul Sharma" required>
+
+        <label for="contribPhone">Phone Number</label>
+        <input type="tel" id="contribPhone" placeholder="e.g. 9876543210" required>
+
+        <button class="action-btn" onclick="startContributorSession()">Start Edge AI Scanner</button>
+        <a href="[Index Page](https://github.com/pulls)" class="back-btn" style="display:block; text-align:center; margin-top:15px; background:transparent; color:#94a3b8;">← Back to Map</a>
+    </div>
+
+    <div id="scannerContainer">
+        <div class="header">
+            <div>
+                <h3 style="margin:0;" id="welcomeHeader">Multi-Damage Scanner</h3>
+                <small id="userMeta" style="color:#94a3b8;"></small>
+            </div>
+            <a href="[Index Page](https://github.com/pulls)" class="back-btn">Exit</a>
         </div>
-        <button class="logout" onclick="logout()">Logout</button>
+
+        <div class="vid-box">
+            <video id="cam" autoplay playsinline muted></video>
+            <canvas id="canvas" style="display:none;"></canvas>
+        </div>
+
+        <div class="panel">
+            <div class="ai-badge" id="aiBadge">Edge AI: Loading model into device RAM...</div>
+
+            <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:8px;" id="localCountInfo">Stored Local Reports: 0</div>
+
+            <button class="action-btn" onclick="sendReportsToPanel()" style="background:#3b82f6;">Send All Reports to Panel</button>
+            <div class="log" id="logBox">Initializing GPS and Camera permissions...</div>
+        </div>
     </div>
 
-    <div class="vid-box">
-        <video id="cam" autoplay playsinline muted></video>
-        <canvas id="canvas" style="display:none;"></canvas>
-    </div>
-
-    <div class="panel">
-        <div class="ai-badge" id="aiBadge">Edge AI: Loading weights into device RAM...</div>
-
-        <label for="severitySelect">Detected Damage Severity (Auto-updated by Edge AI):</label>
-        <select id="severitySelect">
-            <option value="Low">Low</option>
-            <option value="Medium" selected>Medium</option>
-            <option value="Severe">Severe</option>
-        </select>
-
-        <button class="submit-btn" onclick="captureAndReport()">Capture & Send to Admin</button>
-        <div class="log" id="logBox">Initializing GPS and Camera...</div>
-    </div>
-
-<<<<<<< HEAD
-    <!-- ONNX Runtime Web library for local device RAM execution -->
-=======
-    <!-- ONNX Runtime Web library -->
->>>>>>> a1478bd32f610091024a60994b907f1ce0b4ff0e
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
-    <script src="js/app.js"></script>
+    <script>
+        let contributor = null;
+        const video = document.getElementById('cam');
+        const canvas = document.getElementById('canvas');
+        const log = document.getElementById('logBox');
+        const aiBadge = document.getElementById('aiBadge');
+
+        let coords = { lat: null, lng: null };
+        let ortSession = null;
+        let isScanning = false;
+        const MODEL_SIZE = 640;
+        const DAMAGE_CLASSES = ['Longitudinal Crack', 'Transverse Crack', 'Alligator Crack', 'Pothole'];
+
+        const BACKEND_URL = window.location.hostname.includes('github.io') 
+            ? 'https://roadguard-backend.onrender.com/api/reports' 
+            : '/api/reports';
+
+        function startContributorSession() {
+            const name = document.getElementById('contribName').value.trim();
+            const phone = document.getElementById('contribPhone').value.trim();
+
+            if (!name || !phone) {
+                alert('Please enter both your name and phone number.');
+                return;
+            }
+
+            contributor = { name, phone };
+            localStorage.setItem('roadguard_contributor', JSON.stringify(contributor));
+
+            document.getElementById('onboardModal').style.display = 'none';
+            document.getElementById('scannerContainer').style.display = 'flex';
+            document.getElementById('userMeta').innerText = `${name} (${phone})`;
+
+            updateLocalStorageCount();
+            initGPS();
+            initCameraAndModel();
+        }
+
+        window.onload = () => {
+            const saved = localStorage.getItem('roadguard_contributor');
+            if (saved) {
+                contributor = JSON.parse(saved);
+                document.getElementById('contribName').value = contributor.name;
+                document.getElementById('contribPhone').value = contributor.phone;
+            }
+            updateLocalStorageCount();
+        };
+
+        function initGPS() {
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(
+                    pos => {
+                        coords.lat = pos.coords.latitude;
+                        coords.lng = pos.coords.longitude;
+                        if (log) log.innerText = `GPS Locked: [${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}]`;
+                    },
+                    () => { if (log) log.innerText = 'GPS permission denied. Using default fallback location.'; },
+                    { enableHighAccuracy: true }
+                );
+            }
+        }
+
+        async function initCameraAndModel() {
+            try {
+                let stream;
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: { exact: 'environment' } } 
+                    });
+                } catch (err1) {
+                    stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: true 
+                    });
+                }
+
+                video.srcObject = stream;
+                video.onloadeddata = async () => {
+                    try {
+                        ortSession = await ort.InferenceSession.create('./model/best.onnx', { executionProviders: ['wasm'] });
+                        aiBadge.innerText = 'Edge AI Ready: Scanning multi-damages locally';
+                        startAutoDetectionLoop();
+                    } catch (err) {
+                        console.error(err);
+                        aiBadge.innerText = 'AI Error: Ensure /model/best.onnx is uploaded.';
+                    }
+                };
+            } catch (err) {
+                console.error("Camera Error:", err);
+                if (log) {
+                    log.innerText = `Camera Error: [${err.name}] ${err.message}`;
+                }
+                alert(`Camera access failed: ${err.message}. Please check browser permissions.`);
+            }
+        }
+
+        async function analyzeFrameForMultipleDamages() {
+            if (!ortSession || !video || video.readyState < 2) return [];
+
+            const offscreen = document.createElement('canvas');
+            offscreen.width = MODEL_SIZE;
+            offscreen.height = MODEL_SIZE;
+            const ctx = offscreen.getContext('2d');
+            ctx.drawImage(video, 0, 0, MODEL_SIZE, MODEL_SIZE);
+            const { data } = ctx.getImageData(0, 0, MODEL_SIZE, MODEL_SIZE);
+
+            const floatData = new Float32Array(3 * MODEL_SIZE * MODEL_SIZE);
+            const area = MODEL_SIZE * MODEL_SIZE;
+            for (let i = 0; i < area; i++) {
+                floatData[i] = data[i * 4] / 255.0;
+                floatData[i + area] = data[i * 4 + 1] / 255.0;
+                floatData[i + 2 * area] = data[i * 4 + 2] / 255.0;
+            }
+
+            const inputTensor = new ort.Tensor('float32', floatData, [1, 3, MODEL_SIZE, MODEL_SIZE]);
+            const results = await ortSession.run({ [ortSession.inputNames[0]]: inputTensor });
+            const output = results[ortSession.outputNames[0]].data;
+
+            const numClasses = DAMAGE_CLASSES.length;
+            const numBoxes = output.length / (4 + numClasses);
+            let detectedDamages = [];
+
+            for (let b = 0; b < numBoxes; b++) {
+                let maxConf = 0;
+                let bestIdx = 0;
+                for (let c = 0; c < numClasses; c++) {
+                    const score = output[(4 + c) * numBoxes + b];
+                    if (score > maxConf) {
+                        maxConf = score;
+                        bestIdx = c;
+                    }
+                }
+                // Threshold filter for valid bounding detection
+                if (maxConf > 0.60) {
+                    detectedDamages.push({
+                        label: DAMAGE_CLASSES[bestIdx],
+                        confidence: maxConf
+                    });
+                }
+            }
+
+            return detectedDamages;
+        }
+
+        function startAutoDetectionLoop() {
+            setInterval(async () => {
+                if (isScanning) return;
+                isScanning = true;
+
+                const detectedList = await analyzeFrameForMultipleDamages();
+                if (detectedList.length > 0) {
+                    const count = detectedList.length;
+                    let severity = 'Normal Damage';
+                    if (count > 10) {
+                        severity = 'High Red Severity';
+                    } else if (count > 4) {
+                        severity = 'Medium';
+                    }
+
+                    aiBadge.innerText = `Detected ${count} damages (${severity})`;
+
+                    // Automatically capture snapshot and store locally when a defect cluster is found
+                    if (count >= 1) {
+                        storeReportLocally(detectedList, severity);
+                    }
+                } else {
+                    aiBadge.innerText = 'Scanning road locally... (Clear)';
+                }
+
+                setTimeout(() => { isScanning = false; }, 4000);
+            }, 2000);
+        }
+
+        function storeReportLocally(damages, severity) {
+            const latitude = coords.lat || 20.2961;
+            const longitude = coords.lng || 85.8245;
+
+            canvas.width = 480;
+            canvas.height = 360;
+            const ctx = canvas.getContext('2d');
+            if (video && video.readyState >= 2) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            }
+            const imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
+
+            const newReport = {
+                contributor_name: contributor ? contributor.name : 'Anonymous',
+                contributor_phone: contributor ? contributor.phone : '0000000000',
+                latitude: latitude,
+                longitude: longitude,
+                severity: severity,
+                damage_count: damages.length,
+                damages_detected: damages,
+                image_base64: imageBase64,
+                timestamp: new Date().toISOString()
+            };
+
+            let localReports = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
+            localReports.push(newReport);
+            localStorage.setItem('roadguard_local_reports', JSON.stringify(localReports));
+
+            updateLocalStorageCount();
+            if (log) log.innerText = `Stored locally: ${damages.length} defect(s) [${severity}] at [${latitude.toFixed(4)}, ${longitude.toFixed(4)}]`;
+        }
+
+        function updateLocalStorageCount() {
+            const localReports = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
+            const infoEl = document.getElementById('localCountInfo');
+            if (infoEl) infoEl.innerText = `Stored Local Reports: ${localReports.length}`;
+        }
+
+        async function sendReportsToPanel() {
+            const localReports = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
+            if (localReports.length === 0) {
+                alert('No local reports stored to send.');
+                return;
+            }
+
+            let successCount = 0;
+            for (let report of localReports) {
+                try {
+                    const response = await fetch(BACKEND_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contributor_name: report.contributor_name,
+                            contributor_phone: report.contributor_phone,
+                            latitude: report.latitude,
+                            longitude: report.longitude,
+                            severity: report.severity,
+                            damage_type: `Multi-Damage Count: ${report.damage_count}`,
+                            image_base64: report.image_base64
+                        })
+                    });
+                    if (response.ok) successCount++;
+                } catch (err) {
+                    console.error("Sync error:", err);
+                }
+            }
+
+            if (successCount > 0) {
+                alert(`Successfully sent ${successCount} report(s) to the report panel/database!`);
+                localStorage.removeItem('roadguard_local_reports');
+                updateLocalStorageCount();
+                if (log) log.innerText = 'All pending local reports uploaded to backend report panel.';
+            } else {
+                alert('Failed to connect to backend server. Stored reports remain saved locally.');
+            }
+        }
+    </script>
 </body>
 </html>
+```[Index Page](https://github.com/pulls)
