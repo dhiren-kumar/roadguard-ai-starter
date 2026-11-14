@@ -76,7 +76,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   const reportCount=document.getElementById("reportCount");
   const mapStatus=document.getElementById("mapStatus");
   const map=L.map("map",{scrollWheelZoom:false}).setView([20.2961,85.8245],7);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
+  L.tileLayer("https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png",{maxZoom:20,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'}).addTo(map);
   const markers=L.layerGroup().addTo(map);
   const legend=L.control({position:"bottomright"});
   legend.onAdd=()=>{const el=L.DomUtil.create("div","legend");el.innerHTML='<b>Report progress</b><br><span class="dot" style="background:#3b82f6"></span>Approved<br><span class="dot" style="background:#f97316"></span>Under construction<br><span class="dot" style="background:#22c55e"></span>Resolved';return el;};
