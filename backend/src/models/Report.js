@@ -14,6 +14,8 @@ const reportSchema = new mongoose.Schema(
         contributorEmail: { type: String, trim: true, maxlength: 254 },
         contributorLocation: { type: String, trim: true, maxlength: 200 },
 
+        locationName: { type: String, trim: true, maxlength: 200 },
+
         location: {
             type: {
                 type: String,
