@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RoadGuard Edge AI - Live Road Scanner</title>
+    <title>RoadGuard Edge AI - Live Multi-Damage Road Scanner</title>
     <style>
         body { 
             font-family: Arial, sans-serif; 
@@ -81,7 +81,7 @@
             border: 1px solid #334155; 
         }
         label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: #cbd5e1; }
-        input, select { 
+        input { 
             width: 100%; 
             padding: 0.7rem; 
             border-radius: 4px; 
@@ -101,6 +101,7 @@
             font-weight: bold; 
             cursor: pointer; 
             box-sizing: border-box;
+            margin-top: 8px;
         }
         button.action-btn:hover { background: #16a34a; }
         .ai-badge { 
@@ -121,6 +122,8 @@
             padding: 10px; 
             border-radius: 4px; 
             box-sizing: border-box;
+            max-height: 120px;
+            overflow-y: auto;
         }
     </style>
 </head>
@@ -128,7 +131,7 @@
 
     <div id="onboardModal">
         <h3>Contributor Registration</h3>
-        <p style="font-size:0.85rem; color:#94a3b8; text-align:center;">Enter your details to start local AI road scanning.</p>
+        <p style="font-size:0.85rem; color:#94a3b8; text-align:center;">Enter your details to start multi-damage AI scanning.</p>
         
         <label for="contribName">Your Full Name</label>
         <input type="text" id="contribName" placeholder="e.g. Rahul Sharma" required>
@@ -137,16 +140,16 @@
         <input type="tel" id="contribPhone" placeholder="e.g. 9876543210" required>
 
         <button class="action-btn" onclick="startContributorSession()">Start Edge AI Scanner</button>
-        <a href="index.html" class="back-btn" style="display:block; text-align:center; margin-top:15px; background:transparent; color:#94a3b8;">← Back to Map</a>
+        <a href="[Index Page](https://github.com/pulls)" class="back-btn" style="display:block; text-align:center; margin-top:15px; background:transparent; color:#94a3b8;">← Back to Map</a>
     </div>
 
     <div id="scannerContainer">
         <div class="header">
             <div>
-                <h3 style="margin:0;" id="welcomeHeader">Road Scanner</h3>
+                <h3 style="margin:0;" id="welcomeHeader">Multi-Damage Scanner</h3>
                 <small id="userMeta" style="color:#94a3b8;"></small>
             </div>
-            <a href="index.html" class="back-btn">Exit</a>
+            <a href="[Index Page](https://github.com/pulls)" class="back-btn">Exit</a>
         </div>
 
         <div class="vid-box">
@@ -157,14 +160,9 @@
         <div class="panel">
             <div class="ai-badge" id="aiBadge">Edge AI: Loading model into device RAM...</div>
 
-            <label for="severitySelect">Detected Severity (Auto-Updated):</label>
-            <select id="severitySelect">
-                <option value="Low">Low</option>
-                <option value="Medium" selected>Medium</option>
-                <option value="Severe">Severe</option>
-            </select>
+            <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:8px;" id="localCountInfo">Stored Local Reports: 0</div>
 
-            <button class="action-btn" onclick="manualCaptureAndReport()">Manual Capture & Report</button>
+            <button class="action-btn" onclick="sendReportsToPanel()" style="background:#3b82f6;">Send All Reports to Panel</button>
             <div class="log" id="logBox">Initializing GPS and Camera permissions...</div>
         </div>
     </div>
@@ -179,11 +177,10 @@
 
         let coords = { lat: null, lng: null };
         let ortSession = null;
-        let isAutoReporting = false;
+        let isScanning = false;
         const MODEL_SIZE = 640;
         const DAMAGE_CLASSES = ['Longitudinal Crack', 'Transverse Crack', 'Alligator Crack', 'Pothole'];
 
-        // Automatically point to your live Render backend or local server
         const BACKEND_URL = window.location.hostname.includes('github.io') 
             ? 'https://roadguard-backend.onrender.com/api/reports' 
             : '/api/reports';
@@ -204,6 +201,7 @@
             document.getElementById('scannerContainer').style.display = 'flex';
             document.getElementById('userMeta').innerText = `${name} (${phone})`;
 
+            updateLocalStorageCount();
             initGPS();
             initCameraAndModel();
         }
@@ -215,6 +213,7 @@
                 document.getElementById('contribName').value = contributor.name;
                 document.getElementById('contribPhone').value = contributor.phone;
             }
+            updateLocalStorageCount();
         };
 
         function initGPS() {
@@ -248,7 +247,7 @@
                 video.onloadeddata = async () => {
                     try {
                         ortSession = await ort.InferenceSession.create('./model/best.onnx', { executionProviders: ['wasm'] });
-                        aiBadge.innerText = 'Edge AI Ready: Running locally in device RAM';
+                        aiBadge.innerText = 'Edge AI Ready: Scanning multi-damages locally';
                         startAutoDetectionLoop();
                     } catch (err) {
                         console.error(err);
@@ -264,8 +263,8 @@
             }
         }
 
-        async function analyzeFrameLocally() {
-            if (!ortSession || !video || video.readyState < 2) return null;
+        async function analyzeFrameForMultipleDamages() {
+            if (!ortSession || !video || video.readyState < 2) return [];
 
             const offscreen = document.createElement('canvas');
             offscreen.width = MODEL_SIZE;
@@ -286,12 +285,13 @@
             const results = await ortSession.run({ [ortSession.inputNames[0]]: inputTensor });
             const output = results[ortSession.outputNames[0]].data;
 
-            let maxConf = 0;
-            let bestIdx = 0;
             const numClasses = DAMAGE_CLASSES.length;
             const numBoxes = output.length / (4 + numClasses);
+            let detectedDamages = [];
 
             for (let b = 0; b < numBoxes; b++) {
+                let maxConf = 0;
+                let bestIdx = 0;
                 for (let c = 0; c < numClasses; c++) {
                     const score = output[(4 + c) * numBoxes + b];
                     if (score > maxConf) {
@@ -299,44 +299,48 @@
                         bestIdx = c;
                     }
                 }
+                // Threshold filter for valid bounding detection
+                if (maxConf > 0.60) {
+                    detectedDamages.push({
+                        label: DAMAGE_CLASSES[bestIdx],
+                        confidence: maxConf
+                    });
+                }
             }
 
-            return { label: DAMAGE_CLASSES[bestIdx] || 'Road Damage', confidence: maxConf };
+            return detectedDamages;
         }
 
         function startAutoDetectionLoop() {
             setInterval(async () => {
-                if (isAutoReporting) return;
-                const res = await analyzeFrameLocally();
-                if (!res) return;
+                if (isScanning) return;
+                isScanning = true;
 
-                const pct = (res.confidence * 100).toFixed(1);
-                const severitySelect = document.getElementById('severitySelect');
+                const detectedList = await analyzeFrameForMultipleDamages();
+                if (detectedList.length > 0) {
+                    const count = detectedList.length;
+                    let severity = 'Normal Damage';
+                    if (count > 10) {
+                        severity = 'High Red Severity';
+                    } else if (count > 4) {
+                        severity = 'Medium';
+                    }
 
-                if (res.confidence > 0.60) {
-                    aiBadge.innerText = `AI Detected: ${res.label} (${pct}%)`;
-                    severitySelect.value = res.confidence > 0.85 ? 'Severe' : 'Medium';
+                    aiBadge.innerText = `Detected ${count} damages (${severity})`;
 
-                    // Trigger automatic report submission when confidence is high
-                    if (res.confidence > 0.82) {
-                        isAutoReporting = true;
-                        aiBadge.innerText = `Auto-capturing ${res.label} report...`;
-                        await submitReport(res.label, severitySelect.value);
-                        setTimeout(() => { isAutoReporting = false; }, 12000);
+                    // Automatically capture snapshot and store locally when a defect cluster is found
+                    if (count >= 1) {
+                        storeReportLocally(detectedList, severity);
                     }
                 } else {
                     aiBadge.innerText = 'Scanning road locally... (Clear)';
                 }
-            }, 1500);
+
+                setTimeout(() => { isScanning = false; }, 4000);
+            }, 2000);
         }
 
-        async function manualCaptureAndReport() {
-            const severity = document.getElementById('severitySelect').value;
-            await submitReport('Manual Damage Scan', severity);
-        }
-
-        async function submitReport(damageType, severity) {
-            // Fallback default coordinates if GPS hasn't locked yet
+        function storeReportLocally(damages, severity) {
             const latitude = coords.lat || 20.2961;
             const longitude = coords.lng || 85.8245;
 
@@ -346,36 +350,73 @@
             if (video && video.readyState >= 2) {
                 ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             }
-
             const imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
 
-            try {
-                const response = await fetch(BACKEND_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contributor_name: contributor ? contributor.name : 'Anonymous',
-                        contributor_phone: contributor ? contributor.phone : '0000000000',
-                        latitude: latitude,
-                        longitude: longitude,
-                        severity: severity,
-                        damage_type: damageType,
-                        image_base64: imageBase64
-                    })
-                });
-                const data = await response.json();
-                if (data.duplicate) {
-                    if (log) log.innerText = data.message;
-                } else {
-                    alert(data.message || 'Report successfully submitted to Admin database!');
-                    if (log) log.innerText = 'Report successfully submitted to Admin!';
+            const newReport = {
+                contributor_name: contributor ? contributor.name : 'Anonymous',
+                contributor_phone: contributor ? contributor.phone : '0000000000',
+                latitude: latitude,
+                longitude: longitude,
+                severity: severity,
+                damage_count: damages.length,
+                damages_detected: damages,
+                image_base64: imageBase64,
+                timestamp: new Date().toISOString()
+            };
+
+            let localReports = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
+            localReports.push(newReport);
+            localStorage.setItem('roadguard_local_reports', JSON.stringify(localReports));
+
+            updateLocalStorageCount();
+            if (log) log.innerText = `Stored locally: ${damages.length} defect(s) [${severity}] at [${latitude.toFixed(4)}, ${longitude.toFixed(4)}]`;
+        }
+
+        function updateLocalStorageCount() {
+            const localReports = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
+            const infoEl = document.getElementById('localCountInfo');
+            if (infoEl) infoEl.innerText = `Stored Local Reports: ${localReports.length}`;
+        }
+
+        async function sendReportsToPanel() {
+            const localReports = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
+            if (localReports.length === 0) {
+                alert('No local reports stored to send.');
+                return;
+            }
+
+            let successCount = 0;
+            for (let report of localReports) {
+                try {
+                    const response = await fetch(BACKEND_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contributor_name: report.contributor_name,
+                            contributor_phone: report.contributor_phone,
+                            latitude: report.latitude,
+                            longitude: report.longitude,
+                            severity: report.severity,
+                            damage_type: `Multi-Damage Count: ${report.damage_count}`,
+                            image_base64: report.image_base64
+                        })
+                    });
+                    if (response.ok) successCount++;
+                } catch (err) {
+                    console.error("Sync error:", err);
                 }
-            } catch (err) {
-                console.error("Submission error:", err);
-                alert('Failed to connect to backend server. Ensure backend is running.');
-                if (log) log.innerText = 'Server connection failed.';
+            }
+
+            if (successCount > 0) {
+                alert(`Successfully sent ${successCount} report(s) to the report panel/database!`);
+                localStorage.removeItem('roadguard_local_reports');
+                updateLocalStorageCount();
+                if (log) log.innerText = 'All pending local reports uploaded to backend report panel.';
+            } else {
+                alert('Failed to connect to backend server. Stored reports remain saved locally.');
             }
         }
     </script>
 </body>
 </html>
+```[Index Page](https://github.com/pulls)
