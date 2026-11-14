@@ -112,7 +112,8 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   let addressCache={};
   try{addressCache=JSON.parse(localStorage.getItem(addressCacheKey)||"{}");}catch(_){addressCache={};}
   let lastReverseLookup=0;
-  async function nearestRoadOrPlace(lat,lng){
+  let reverseLookupQueue=Promise.resolve();
+  async function lookupNearestRoadOrPlace(lat,lng){
     const key=lat.toFixed(5)+","+lng.toFixed(5);
     if(addressCache[key])return addressCache[key];
     const wait=Math.max(0,1100-(Date.now()-lastReverseLookup));
@@ -129,6 +130,11 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
     addressCache[key]=result;
     try{localStorage.setItem(addressCacheKey,JSON.stringify(addressCache));}catch(_){}
     return result;
+  }
+  function nearestRoadOrPlace(lat,lng){
+    const task=reverseLookupQueue.then(()=>lookupNearestRoadOrPlace(lat,lng));
+    reverseLookupQueue=task.catch(()=>{});
+    return task;
   }
   const legend=L.control({position:"bottomright"});
   legend.onAdd=()=>{const el=L.DomUtil.create("div","legend");el.innerHTML='<b>Report progress</b><br><span class="dot" style="background:#3b82f6"></span>Approved<br><span class="dot" style="background:#f97316"></span>Under construction<br><span class="dot" style="background:#22c55e"></span>Resolved';return el;};
