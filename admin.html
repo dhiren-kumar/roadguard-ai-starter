@@ -38,6 +38,20 @@ a{color:#176b4b}
         <button class="logout-btn" onclick="logoutAdmin()">Logout</button>
     </header>
 
+    <div class="table-container" style="margin-bottom:18px">
+        <h3 style="color:#176b4b">Maintenance staff accounts</h3>
+        <p>Create staff login accounts here. Staff cannot register themselves.</p>
+        <form id="staffCreateForm" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:end">
+            <label>Name<input id="newStaffName" required maxlength="100" autocomplete="off"></label>
+            <label>Email<input id="newStaffEmail" type="email" required autocomplete="off"></label>
+            <label>Department / Team<input id="newStaffDepartment" maxlength="120"></label>
+            <label>Temporary password (12+ characters)<input id="newStaffPassword" type="password" minlength="12" required autocomplete="new-password"></label>
+            <button type="submit" class="repair-btn" id="createStaffButton">Create staff account</button>
+        </form>
+        <p id="staffCreateStatus" role="status"></p>
+        <div id="staffAccountList" aria-live="polite"></div>
+    </div>
+
     <div class="table-container">
         <h3 style="margin-top:0; color:#cbd5e1;">Submitted Road Reports (Sorted by Highest Severity)</h3>
         <table>
@@ -58,7 +72,7 @@ a{color:#176b4b}
         </table>
     </div>
 
-    <dialog id="repairDialog"><h2 style="margin-top:0;color:#176b4b">Maintenance & repair tracking</h2><p id="repairReportLabel" style="color:#64748b"></p><form id="repairForm"><div class="repair-form"><label>Assigned staff / team<input id="repairStaff" maxlength="100"></label><label>Department<input id="repairDepartment" maxlength="120" placeholder="PWD / Municipality / contractor"></label><label>Priority<select id="repairPriority"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><label>Target completion date<input id="repairDueDate" type="date"></label><label class="wide">Repair note<textarea id="repairNote" rows="3" maxlength="1000"></textarea></label><label class="wide">Before / after repair photos (up to 2)<input id="repairPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><label class="wide">Photo caption<input id="repairPhotoCaption" maxlength="120"></label></div><div id="repairExisting" style="margin-top:14px"></div><div class="repair-actions"><button type="button" id="repairCancel">Close</button><button type="submit" class="repair-btn" id="repairSave">Save maintenance update</button></div></form></dialog>
+    <dialog id="repairDialog"><h2 style="margin-top:0;color:#176b4b">Maintenance & repair tracking</h2><p id="repairReportLabel" style="color:#64748b"></p><form id="repairForm"><div class="repair-form"><label>Assigned staff account<select id="repairStaff"><option value="">Unassigned</option></select></label><label>Department<input id="repairDepartment" maxlength="120" placeholder="PWD / Municipality / contractor"></label><label>Priority<select id="repairPriority"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select></label><label>Target completion date<input id="repairDueDate" type="date"></label><label class="wide">Repair note<textarea id="repairNote" rows="3" maxlength="1000"></textarea></label><label class="wide">Before / after repair photos (up to 2)<input id="repairPhotos" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><label class="wide">Photo caption<input id="repairPhotoCaption" maxlength="120"></label></div><div id="repairExisting" style="margin-top:14px"></div><div class="repair-actions"><button type="button" id="repairCancel">Close</button><button type="submit" class="repair-btn" id="repairSave">Save maintenance update</button></div></form></dialog>
     <script>
         const token = sessionStorage.getItem('roadguard_token');
         const currentUser = JSON.parse(sessionStorage.getItem('roadguard_user') || 'null');
@@ -93,12 +107,26 @@ a{color:#176b4b}
             sessionStorage.removeItem('roadguard_user');
             window.location.href = 'login.html?mode=admin';
         }
+        let maintenanceStaff=[];
+        async function loadMaintenanceStaff(){
+            const result=await api('/api/auth/staff');
+            maintenanceStaff=result.data||[];
+            const list=document.getElementById('staffAccountList');list.replaceChildren();
+            if(!maintenanceStaff.length){list.textContent='No staff accounts created yet.';return;}
+            maintenanceStaff.forEach(person=>{const row=document.createElement('p');row.textContent=person.name+' · '+person.email+(person.locationText?' · '+person.locationText:'');list.appendChild(row);});
+        }
+        document.getElementById('staffCreateForm').addEventListener('submit',async event=>{
+            event.preventDefault();const button=document.getElementById('createStaffButton'),status=document.getElementById('staffCreateStatus');
+            button.disabled=true;status.textContent='Creating account…';
+            try{await api('/api/auth/staff',{method:'POST',body:JSON.stringify({name:document.getElementById('newStaffName').value,email:document.getElementById('newStaffEmail').value,password:document.getElementById('newStaffPassword').value,department:document.getElementById('newStaffDepartment').value})});event.target.reset();status.textContent='Staff account created. Share the login URL and temporary password securely.';await loadMaintenanceStaff();}
+            catch(error){status.textContent=error.message;}finally{button.disabled=false;}
+        });
         let activeRepairReport=null;
         const repairDialog=document.getElementById('repairDialog');
         document.getElementById('repairCancel').addEventListener('click',()=>repairDialog.close());
         function renderRepairHistory(report){const host=document.getElementById('repairExisting');host.replaceChildren();const notes=report.maintenance_notes||[],history=report.repair_history||[],photos=report.repair_photos||[];const heading=document.createElement('h3');heading.textContent='Repair history';host.appendChild(heading);if(!notes.length&&!history.length&&!photos.length){const p=document.createElement('p');p.textContent='No repair activity recorded yet.';host.appendChild(p);}history.forEach(item=>{const p=document.createElement('p');p.className='repair-log';p.textContent=(item.from_status||'New')+' → '+(item.to_status||'Updated')+' · '+(item.changed_by||'Admin')+' · '+(item.changed_at?new Date(item.changed_at).toLocaleString():'');host.appendChild(p);});notes.forEach(item=>{const p=document.createElement('p');p.className='repair-log';p.textContent=(item.note||'')+' — '+(item.author||'Admin')+' · '+(item.created_at?new Date(item.created_at).toLocaleString():'');host.appendChild(p);});photos.forEach(item=>{const wrap=document.createElement('div');wrap.className='repair-log';const img=document.createElement('img');img.src=item.image_url;img.alt=item.caption||'Repair evidence';img.loading='lazy';wrap.appendChild(img);const caption=document.createElement('span');caption.textContent=item.caption||'Repair photo';wrap.appendChild(caption);host.appendChild(wrap);});}
-        function openRepairManager(report){activeRepairReport=report;document.getElementById('repairReportLabel').textContent=(report.damage_type||'Road damage')+' · '+(report.location_name||report.contributor_location||'Location not specified');document.getElementById('repairStaff').value=report.maintenance_assignment?.staff_name||'';document.getElementById('repairDepartment').value=report.maintenance_assignment?.department||'';document.getElementById('repairPriority').value=report.priority||'medium';document.getElementById('repairDueDate').value=report.target_completion_date?new Date(report.target_completion_date).toISOString().slice(0,10):'';document.getElementById('repairNote').value='';document.getElementById('repairPhotos').value='';document.getElementById('repairPhotoCaption').value='';renderRepairHistory(report);repairDialog.showModal();}
-        document.getElementById('repairForm').addEventListener('submit',async event=>{event.preventDefault();if(!activeRepairReport)return;const button=document.getElementById('repairSave');button.disabled=true;button.textContent='Saving…';try{const files=[...document.getElementById('repairPhotos').files];if(files.length>2)throw new Error('Choose no more than two photos.');const repair_photos=await Promise.all(files.map(file=>new Promise((resolve,reject)=>{if(file.size>3.7*1024*1024){reject(new Error(file.name+' is larger than 3.7 MB.'));return;}const reader=new FileReader();reader.onload=()=>resolve({image_base64:reader.result,caption:document.getElementById('repairPhotoCaption').value.trim()});reader.onerror=()=>reject(new Error('Could not read '+file.name));reader.readAsDataURL(file);})));const payload={staff_name:document.getElementById('repairStaff').value,department:document.getElementById('repairDepartment').value,priority:document.getElementById('repairPriority').value,target_completion_date:document.getElementById('repairDueDate').value,note:document.getElementById('repairNote').value,repair_photos};await api('/api/reports/'+encodeURIComponent(activeRepairReport.id)+'/maintenance',{method:'PATCH',body:JSON.stringify(payload)});repairDialog.close();await loadAdminReports();}catch(error){alert(error.message);}finally{button.disabled=false;button.textContent='Save maintenance update';}});
+        function openRepairManager(report){activeRepairReport=report;document.getElementById('repairReportLabel').textContent=(report.damage_type||'Road damage')+' · '+(report.location_name||report.contributor_location||'Location not specified');const staffSelect=document.getElementById('repairStaff');staffSelect.replaceChildren(new Option('Unassigned',''));maintenanceStaff.forEach(person=>staffSelect.add(new Option(person.name+' · '+person.email,person.id)));staffSelect.value=report.maintenance_assignment?.staff_id||'';document.getElementById('repairDepartment').value=report.maintenance_assignment?.department||'';document.getElementById('repairPriority').value=report.priority||'medium';document.getElementById('repairDueDate').value=report.target_completion_date?new Date(report.target_completion_date).toISOString().slice(0,10):'';document.getElementById('repairNote').value='';document.getElementById('repairPhotos').value='';document.getElementById('repairPhotoCaption').value='';renderRepairHistory(report);repairDialog.showModal();}
+        document.getElementById('repairForm').addEventListener('submit',async event=>{event.preventDefault();if(!activeRepairReport)return;const button=document.getElementById('repairSave');button.disabled=true;button.textContent='Saving…';try{const files=[...document.getElementById('repairPhotos').files];if(files.length>2)throw new Error('Choose no more than two photos.');const repair_photos=await Promise.all(files.map(file=>new Promise((resolve,reject)=>{if(file.size>3.7*1024*1024){reject(new Error(file.name+' is larger than 3.7 MB.'));return;}const reader=new FileReader();reader.onload=()=>resolve({image_base64:reader.result,caption:document.getElementById('repairPhotoCaption').value.trim()});reader.onerror=()=>reject(new Error('Could not read '+file.name));reader.readAsDataURL(file);})));const payload={staff_id:document.getElementById('repairStaff').value,department:document.getElementById('repairDepartment').value,priority:document.getElementById('repairPriority').value,target_completion_date:document.getElementById('repairDueDate').value,note:document.getElementById('repairNote').value,repair_photos};await api('/api/reports/'+encodeURIComponent(activeRepairReport.id)+'/maintenance',{method:'PATCH',body:JSON.stringify(payload)});repairDialog.close();await loadAdminReports();}catch(error){alert(error.message);}finally{button.disabled=false;button.textContent='Save maintenance update';}});
         async function loadAdminReports() {
             try {
                 const result = await api('/api/reports');
@@ -160,6 +188,7 @@ a{color:#176b4b}
         }
         (async () => {
             if (await verifyAdmin()) {
+                await loadMaintenanceStaff();
                 await loadAdminReports();
                 setInterval(loadAdminReports, 15000);
             }
