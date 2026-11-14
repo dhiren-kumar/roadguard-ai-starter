@@ -84,7 +84,26 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
     map.setZoom(map.getZoom()+(event.deltaY<0?1:-1));
     wheelZoomTimer=setTimeout(()=>{wheelZoomTimer=null;},120);
   },{passive:false});
-  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:'Tiles &copy; Esri &mdash; Sources: Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), OpenStreetMap contributors, and the GIS User Community'}).addTo(map);
+  // Satellite imagery is the default basemap. Users can switch to street view
+  // or turn place/road labels on over the imagery using the layer control.
+  const satelliteLayer=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{
+    maxZoom:19,
+    attribution:'Tiles &copy; Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community'
+  }).addTo(map);
+  const streetLayer=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",{
+    maxZoom:19,
+    attribution:'Tiles &copy; Esri — Sources: Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), OpenStreetMap contributors, and the GIS User Community'
+  });
+  const labelsLayer=L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",{
+    maxZoom:19,
+    opacity:0.95,
+    attribution:'Labels &copy; Esri'
+  });
+  L.control.layers(
+    {"Satellite":satelliteLayer,"Street map":streetLayer},
+    {"Road and place labels":labelsLayer},
+    {position:"topright",collapsed:false}
+  ).addTo(map);
   const markers=L.layerGroup().addTo(map);
   // Resolve a report coordinate to its nearest road or, if unavailable, a nearby place.
   const addressCacheKey="roadguard_reverse_geocode_v1";
