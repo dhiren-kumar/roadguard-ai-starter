@@ -43,14 +43,14 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   </nav>
 </header>
 <main>
-  <section aria-labelledby="reportsHeading">
+  <section id="public-reports" aria-labelledby="reportsHeading">
     <div class="section-title">
       <div><h2 id="reportsHeading">Public Road Damage Reports</h2><p class="sub">Verified reports and their latest progress updates.</p></div>
       <span class="sub" id="reportCount" role="status">Loading reports…</span>
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Photo</th><th>Damage type</th><th>Severity</th><th>Location</th><th>Reported on</th><th>Progress status</th></tr></thead>
+        <thead><tr><th>Photo</th><th>Damage type</th><th>Severity</th><th>Location</th><th>District</th><th>Reported on</th><th>Progress status</th></tr></thead>
         <tbody id="reportTable"><tr><td colspan="6" class="empty">Loading public reports…</td></tr></tbody>
       </table>
     </div>
@@ -116,9 +116,11 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   function render(reports){
     table.replaceChildren();markers.clearLayers();reportMarkers.clear();
     reportCount.textContent=reports.length+" public report(s)";
-    if(!reports.length){const tr=document.createElement("tr"),td=cell(tr,"No public reports are available yet.");td.colSpan=6;td.className="empty";table.appendChild(tr);return;}
+    if(!reports.length){const tr=document.createElement("tr"),td=cell(tr,"No public reports are available yet.");td.colSpan=7;td.className="empty";table.appendChild(tr);return;}
     reports.forEach(r=>{
       const tr=document.createElement("tr");
+      const reportKey=String(r._id||r.id||r.timestamp||String(r.latitude)+","+String(r.longitude));
+      tr.id="report-"+encodeURIComponent(reportKey);
       const photo=document.createElement("td");
       const imageSrc = typeof r.image_url === "string" ? r.image_url : r.image_base64;
       if(typeof imageSrc==="string" && (/^https:\/\/res\.cloudinary\.com\/[A-Za-z0-9_-]+\//.test(imageSrc) || /^data:image\/(jpeg|jpg|png|webp);base64,/.test(imageSrc))){
@@ -148,6 +150,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
         locationCell.appendChild(viewButton);
       }
       tr.appendChild(locationCell);
+      const districtCell=cell(tr,"Open map marker to find district");districtCell.dataset.districtFor=reportKey;
       cell(tr,r.timestamp?new Date(r.timestamp).toLocaleString():"—");
       const statusCell=document.createElement("td");
       const status=String(r.status||"unknown").toLowerCase();
@@ -162,10 +165,50 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
         const title=document.createElement("strong");title.textContent=r.damage_type||"Road damage";popup.appendChild(title);
         const line=document.createElement("p");line.textContent="Status: "+status.replaceAll("-"," ");popup.appendChild(line);
         const loc=document.createElement("small");loc.textContent=r.location_name||"Road/place name not provided";popup.appendChild(loc);
+        const district=document.createElement("p");district.textContent="District: not looked up yet";district.style.margin="8px 0";popup.appendChild(district);
+        const publicLink=document.createElement("a");
+        publicLink.href="/?report="+encodeURIComponent(reportKey)+"#public-reports";
+        publicLink.textContent="View public report";
+        publicLink.style.cssText="display:inline-block;margin-top:6px;padding:7px 10px;border-radius:4px;background:#2563eb;color:#fff;text-decoration:none;font-weight:bold;font-size:12px";
+        popup.appendChild(publicLink);
+        marker.on("click",()=>lookupDistrict(lat,lng,reportKey,district));
         marker.bindPopup(popup);
       }
     });
   }
+  const districtCache=new Map();
+  let lastDistrictLookup=0;
+  async function lookupDistrict(lat,lng,reportKey,popupNode){
+    const key=lat.toFixed(5)+","+lng.toFixed(5);
+    const cached=districtCache.get(key);
+    if(cached){
+      popupNode.textContent="District: "+cached;
+      const cell=document.querySelector('[data-district-for="'+CSS.escape(reportKey)+'"]');
+      if(cell)cell.textContent=cached;
+      return;
+    }
+    popupNode.textContent="District: looking up…";
+    try{
+      const wait=Math.max(0,1100-(Date.now()-lastDistrictLookup));
+      if(wait)await new Promise(resolve=>setTimeout(resolve,wait));
+      lastDistrictLookup=Date.now();
+      const url="https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=10&lat="+encodeURIComponent(lat)+"&lon="+encodeURIComponent(lng);
+      const response=await fetch(url,{headers:{Accept:"application/json"}});
+      if(!response.ok)throw new Error("District lookup unavailable");
+      const data=await response.json();
+      const address=data.address||{};
+      const name=address.state_district||address.district||address.county||address.city_district||"District not available";
+      districtCache.set(key,name);
+      popupNode.textContent="District: "+name;
+      const cell=document.querySelector('[data-district-for="'+CSS.escape(reportKey)+'"]');
+      if(cell)cell.textContent=name;
+    }catch(error){
+      popupNode.textContent="District: unavailable (try again later)";
+      const cell=document.querySelector('[data-district-for="'+CSS.escape(reportKey)+'"]');
+      if(cell)cell.textContent="Unavailable";
+    }
+  }
+
   async function loadReports(){
     try{
       const response=await fetch("/api/reports/public",{headers:{Accept:"application/json"}});
@@ -192,7 +235,17 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   document.getElementById("searchButton").addEventListener("click",searchLocation);
   document.getElementById("searchInput").addEventListener("keydown",e=>{if(e.key==="Enter")searchLocation();});
   document.getElementById("resetButton").addEventListener("click",()=>map.setView([20.2961,85.8245],7));
-  loadReports();setInterval(loadReports,30000);
+  loadReports().then(()=>{
+    const requested=new URLSearchParams(window.location.search).get("report");
+    if(requested){
+      const target=document.getElementById("report-"+encodeURIComponent(requested));
+      if(target){
+        target.scrollIntoView({behavior:"smooth",block:"center"});
+        target.style.outline="2px solid #38bdf8";
+        target.style.background="#26364d";
+      }
+    }
+  });setInterval(loadReports,30000);
 })();
 </script>
 </body>
