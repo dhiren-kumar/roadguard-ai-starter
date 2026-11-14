@@ -32,6 +32,7 @@ tbody tr:hover{background:#26364d}tbody tr:last-child td{border-bottom:0}
 .dot{height:10px;width:10px;border-radius:50%;display:inline-block;margin-right:6px}
 .map-status{color:#94a3b8;font-size:12px;margin:10px 0 0}
 footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.stats-section{margin:28px 0 30px}.stats-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:14px 0 18px}.stat-card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:14px}.stat-card small{display:block;color:#94a3b8;font-size:12px;margin-bottom:7px}.stat-card strong{font-size:25px;color:#f8fafc}.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}.stats-panel{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:15px;min-width:0}.stats-panel h3{font-size:15px;margin:0 0 13px;color:#7dd3fc}.stat-row{display:grid;grid-template-columns:minmax(90px,1fr) minmax(80px,2fr) 34px;gap:9px;align-items:center;margin:10px 0;font-size:12px}.stat-track{height:10px;background:#0f172a;border-radius:10px;overflow:hidden}.stat-fill{height:100%;background:#38bdf8;border-radius:10px}.stat-value{text-align:right;color:#e2e8f0;font-variant-numeric:tabular-nums}.stats-note{color:#94a3b8;font-size:12px;margin:12px 0 0}
 @media(max-width:600px){header{align-items:flex-start}header h1{font-size:18px}main{padding:16px 3% 28px}#map{height:380px}}
  
 #reportDetailsDialog{width:min(900px,94vw);max-height:88vh;overflow:auto;background:#111c30;color:#e2e8f0;border:1px solid #475569;border-radius:12px;padding:20px}
@@ -76,6 +77,16 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       </table>
     </div>
     <p class="status-note">Report progress is read-only on this public page. Only authorised administrators can change a report's status.</p>
+  </section>
+  <section class="stats-section" aria-labelledby="statsHeading">
+    <div class="section-title"><div><h2 id="statsHeading">Road Damage Statistics</h2><p class="sub">Live summary of the public reports currently available on this page.</p></div><span class="sub" id="statsUpdated">Calculating…</span></div>
+    <div class="stats-cards" id="statsCards" aria-live="polite"></div>
+    <div class="stats-grid">
+      <div class="stats-panel"><h3>District-wise reports</h3><div id="districtStats"></div><p class="stats-note" id="districtStatsNote">District information is collected gradually as report locations are looked up.</p></div>
+      <div class="stats-panel"><h3>Damage types</h3><div id="damageStats"></div></div>
+      <div class="stats-panel"><h3>Severity distribution</h3><div id="severityStats"></div></div>
+      <div class="stats-panel"><h3>Repair progress</h3><div id="statusStats"></div></div>
+    </div>
   </section>
   <dialog id="reportDetailsDialog" aria-labelledby="detailTitle"><div class="detail-head"><h2 id="detailTitle">Report details</h2><button class="detail-close" type="button" id="closeDetails">Close</button></div><div id="reportDetailsContent"><p class="sub">Loading report details…</p></div></dialog>
   <section aria-labelledby="mapHeading">
@@ -218,6 +229,38 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
     });
   }
   const districtCache=new Map();
+  function renderStatBars(targetId,entries){
+    const target=document.getElementById(targetId);if(!target)return;
+    target.replaceChildren();
+    if(!entries.length){const note=document.createElement("p");note.className="stats-note";note.textContent="No data available yet.";target.appendChild(note);return;}
+    const max=Math.max(1,...entries.map(item=>item.count));
+    entries.forEach(item=>{
+      const row=document.createElement("div");row.className="stat-row";
+      const label=document.createElement("span");label.textContent=item.label;
+      const track=document.createElement("div");track.className="stat-track";
+      const fill=document.createElement("div");fill.className="stat-fill";fill.style.width=(item.count/max*100)+"%";track.appendChild(fill);
+      const value=document.createElement("strong");value.className="stat-value";value.textContent=String(item.count);
+      row.append(label,track,value);target.appendChild(row);
+    });
+  }
+  function refreshStatistics(){
+    const total=allReports.length;
+    const high=allReports.filter(r=>String(r.severity||"").toLowerCase()==="high").length;
+    const resolved=allReports.filter(r=>String(r.status||"").toLowerCase()==="resolved").length;
+    const cards=[["Public reports",total],["High severity",high],["Resolved",resolved],["Still in progress",total-resolved]];
+    const cardHost=document.getElementById("statsCards");if(!cardHost)return;cardHost.replaceChildren();
+    cards.forEach(([label,value])=>{const card=document.createElement("div");card.className="stat-card";const small=document.createElement("small"),strong=document.createElement("strong");small.textContent=label;strong.textContent=String(value);card.append(small,strong);cardHost.appendChild(card);});
+    const typeCounts=new Map();allReports.forEach(report=>String(report.damage_type||"Road damage").split(/[,;|]/).map(v=>v.trim()).filter(Boolean).forEach(type=>typeCounts.set(type,(typeCounts.get(type)||0)+1)));
+    renderStatBars("damageStats",[...typeCounts].map(([label,count])=>({label,count})).sort((a,b)=>b.count-a.count).slice(0,8));
+    renderStatBars("severityStats",["high","medium","low"].map(label=>({label:label[0].toUpperCase()+label.slice(1),count:allReports.filter(r=>String(r.severity||"").toLowerCase()===label).length})));
+    renderStatBars("statusStats",["approved","under-construction","resolved"].map(label=>({label:label.split("-").map(word=>word[0].toUpperCase()+word.slice(1)).join(" "),count:allReports.filter(r=>String(r.status||"").toLowerCase()===label).length})));
+    const districtCounts=new Map();
+    allReports.forEach(report=>{const lat=Number(report.latitude),lng=Number(report.longitude);if(!Number.isFinite(lat)||!Number.isFinite(lng))return;const key=lat.toFixed(5)+","+lng.toFixed(5);const district=String(report.district||districtCache.get(key)||"").trim();if(district&&district!=="District not available"&&district!=="Unavailable")districtCounts.set(district,(districtCounts.get(district)||0)+1);});
+    const districtEntries=[...districtCounts].map(([label,count])=>({label,count})).sort((a,b)=>b.count-a.count).slice(0,10);
+    renderStatBars("districtStats",districtEntries);
+    const note=document.getElementById("districtStatsNote");if(note)note.textContent=districtEntries.length+" district(s) identified so far. Lookups run gradually to avoid overloading the geocoding service.";
+    const updated=document.getElementById("statsUpdated");if(updated)updated.textContent="Updated "+new Date().toLocaleTimeString();
+  }
   function populateDamageTypeFilter(reports){
     const select=document.getElementById("damageTypeFilter");
     const selected=select.value;
@@ -281,6 +324,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
         const address=data.address||{};
         const name=address.state_district||address.district||address.county||address.city_district||"District not available";
         districtCache.set(key,name);
+        refreshStatistics();
         popupNode.textContent=popupNode.classList.contains("district-cell")?name:"District: "+name;
         const cell=document.querySelector('[data-district-for="'+CSS.escape(reportKey)+'"]');
         if(cell)cell.textContent=name;
@@ -343,7 +387,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       if(!response.ok)throw new Error("Could not load public reports (HTTP "+response.status+").");
       const reports=await response.json();
       if(!Array.isArray(reports))throw new Error("Unexpected reports response.");
-      allReports=reports;populateDamageTypeFilter(allReports);applyReportFilters();
+      allReports=reports;populateDamageTypeFilter(allReports);applyReportFilters();refreshStatistics();
     }catch(error){
       table.replaceChildren();const tr=document.createElement("tr"),td=cell(tr,error.message);td.colSpan=7;td.className="empty";table.appendChild(tr);
       reportCount.textContent="Reports unavailable";mapStatus.textContent=error.message;
