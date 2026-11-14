@@ -1,40 +1,27 @@
+const User = require('../models/User');
+const bcrypt = require('bcryptjs');
 
-require("dotenv").config();
-
-const mongoose = require("mongoose");
-const bcrypt = require("bcryptjs");
-const User = require("../models/User");
-
-async function createAdmin() {
+const seedAdmin = async () => {
     try {
-        await mongoose.connect(process.env.MONGODB_URI);
+        const adminEmail = process.env.ADMIN_EMAIL || 'admin@roadguard.com';
+        const adminPassword = process.env.ADMIN_PASSWORD || 'SecureAdminPassword123!';
 
-        const email = process.env.ADMIN_EMAIL.toLowerCase();
-        const password = process.env.ADMIN_PASSWORD;
-
-        if (!email || !password || password.length < 12) {
-            throw new Error("Configure a strong admin password in .env");
+        const existingAdmin = await User.findOne({ email: adminEmail });
+        if (!existingAdmin) {
+            const hashedPassword = await bcrypt.hash(adminPassword, 10);
+            await User.create({
+                name: 'System Admin',
+                email: adminEmail,
+                password: hashedPassword,
+                role: 'admin'
+            });
+            console.log('Admin user seeded successfully.');
+        } else {
+            console.log('Admin user already exists.');
         }
-
-        await User.findOneAndUpdate(
-            { email },
-            {
-                name: process.env.ADMIN_NAME,
-                email,
-                passwordHash: await bcrypt.hash(password, 12),
-                role: "admin",
-                isEmailVerified: true
-            },
-            { upsert: true, new: true }
-        );
-
-        console.log("Admin account created successfully");
-
     } catch (error) {
-        console.error(error);
-    } finally {
-        await mongoose.disconnect();
+        console.error('Error seeding admin:', error);
     }
-}
+};
 
-createAdmin();
+module.exports = seedAdmin;
