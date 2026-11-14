@@ -209,6 +209,7 @@ button.action-btn:hover{background:#10553b}
         let coords = { lat: null, lng: null };
         let currentLocationName = '';
         let selectedReportCoords = null;
+        let userPickedReportLocation = false;
         let locationMap = null;
         let selectedLocationMarker = null;
         let gpsWatchId = null;
@@ -255,6 +256,7 @@ button.action-btn:hover{background:#10553b}
                     selectedLocationMarker = L.marker([lat, lng], { draggable: true }).addTo(locationMap);
                     selectedLocationMarker.on('dragend', event => {
                         const point = event.target.getLatLng();
+                        userPickedReportLocation = true;
                         updateSelectedLocation(point.lat, point.lng, false);
                     });
                 } else {
@@ -274,7 +276,10 @@ button.action-btn:hover{background:#10553b}
                     attribution: '&copy; OpenStreetMap contributors'
                 }).addTo(locationMap);
                 L.control.layers({ 'Road and place names': street }).addTo(locationMap);
-                locationMap.on('click', event => updateSelectedLocation(event.latlng.lat, event.latlng.lng, false));
+                locationMap.on('click', event => {
+                    userPickedReportLocation = true;
+                    updateSelectedLocation(event.latlng.lat, event.latlng.lng, false);
+                });
                 setTimeout(() => locationMap.invalidateSize(), 150);
             }
             updateSelectedLocation(lat, lng, true);
@@ -285,6 +290,7 @@ button.action-btn:hover{background:#10553b}
                 if (log) log.innerText = 'Waiting for a valid GPS position.';
                 return;
             }
+            userPickedReportLocation = false;
             updateSelectedLocation(coords.lat, coords.lng, true);
         });
 
@@ -303,8 +309,8 @@ button.action-btn:hover{background:#10553b}
                     coords.lng = pos.coords.longitude;
                     if (statusEl) statusEl.textContent = 'Live GPS active · accuracy ±' + Math.round(pos.coords.accuracy) + ' m · updated ' + new Date(pos.timestamp).toLocaleTimeString();
                     if (coordsEl) coordsEl.textContent = 'Coordinates: ' + coords.lat.toFixed(6) + ', ' + coords.lng.toFixed(6);
-                    if (!selectedReportCoords) initLocationPicker(coords.lat, coords.lng);
-                    else if (!locationMap) initLocationPicker(coords.lat, coords.lng);
+                    if (!locationMap) initLocationPicker(coords.lat, coords.lng);
+                    else if (!userPickedReportLocation) updateSelectedLocation(coords.lat, coords.lng, false);
                     if (log) log.innerText = 'Live GPS locked: [' + coords.lat.toFixed(5) + ', ' + coords.lng.toFixed(5) + ']';
                 },
                 error => {
