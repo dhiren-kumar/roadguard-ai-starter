@@ -401,6 +401,7 @@ router.patch("/:id/status", protect, adminOnly, async (req, res) => {
         if (!report) return res.status(404).json({ success: false, message: "Report not found." });
         const previousStatus = report.status;
         report.status = status;
+        if (status === "resolved" || status === "rejected") report.repairVerificationPending = false;
         if (previousStatus !== status) {
             report.repairHistory.push({
                 fromStatus: previousStatus,
