@@ -112,6 +112,14 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   legend.addTo(map);
   document.getElementById("year").textContent=new Date().getFullYear();
 
+  const districtObserver = "IntersectionObserver" in window ? new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      districtObserver.unobserve(entry.target);
+      const el = entry.target;
+      lookupDistrict(Number(el.dataset.lat), Number(el.dataset.lng), el.dataset.districtFor, el);
+    });
+  }, { rootMargin: "120px" }) : null;
   function cell(row,value){const td=document.createElement("td");td.textContent=value==null||value===""?"—":String(value);row.appendChild(td);return td;}
   function render(reports){
     table.replaceChildren();markers.clearLayers();reportMarkers.clear();
@@ -150,7 +158,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
         locationCell.appendChild(viewButton);
       }
       tr.appendChild(locationCell);
-      const districtCell=cell(tr,"Finding district…");districtCell.dataset.districtFor=reportKey;
+      const districtCell=cell(tr,"Finding district…");districtCell.className="district-cell";districtCell.dataset.districtFor=reportKey;
       cell(tr,r.timestamp?new Date(r.timestamp).toLocaleString():"—");
       const statusCell=document.createElement("td");
       const status=String(r.status||"unknown").toLowerCase();
@@ -174,6 +182,10 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
         popup.appendChild(publicLink);
         marker.on("click",()=>lookupDistrict(lat,lng,reportKey,district));
         marker.bindPopup(popup);
+        districtCell.dataset.lat=String(lat);
+        districtCell.dataset.lng=String(lng);
+        if(districtObserver)districtObserver.observe(districtCell);
+        else lookupDistrict(lat,lng,reportKey,districtCell);
       }
     });
   }
@@ -185,12 +197,12 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
     const cached=districtCache.get(key);
     if(districtPending.has(key))return districtPending.get(key);
     if(cached){
-      popupNode.textContent="District: "+cached;
+      popupNode.textContent=popupNode.classList.contains("district-cell")?cached:"District: "+cached;
       const cell=document.querySelector('[data-district-for="'+CSS.escape(reportKey)+'"]');
       if(cell)cell.textContent=cached;
       return;
     }
-    popupNode.textContent="District: looking up…";
+    popupNode.textContent=popupNode.classList.contains("district-cell")?"Finding district…":"District: looking up…";
     const lookup=(async()=>{
       try{
         const wait=Math.max(0,1100-(Date.now()-lastDistrictLookup));
@@ -203,11 +215,11 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
         const address=data.address||{};
         const name=address.state_district||address.district||address.county||address.city_district||"District not available";
         districtCache.set(key,name);
-        popupNode.textContent="District: "+name;
+        popupNode.textContent=popupNode.classList.contains("district-cell")?name:"District: "+name;
         const cell=document.querySelector('[data-district-for="'+CSS.escape(reportKey)+'"]');
         if(cell)cell.textContent=name;
       }catch(error){
-        popupNode.textContent="District: unavailable";
+        popupNode.textContent=popupNode.classList.contains("district-cell")?"Unavailable":"District: unavailable";
         const cell=document.querySelector('[data-district-for="'+CSS.escape(reportKey)+'"]');
         if(cell)cell.textContent="Unavailable";
       }finally{
