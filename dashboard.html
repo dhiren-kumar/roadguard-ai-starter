@@ -183,6 +183,11 @@
         const MODEL_SIZE = 640;
         const DAMAGE_CLASSES = ['Longitudinal Crack', 'Transverse Crack', 'Alligator Crack', 'Pothole'];
 
+        // Automatically point to your live backend server or fallback to local
+        const BACKEND_URL = window.location.hostname.includes('github.io') 
+            ? 'https://roadguard-backend.onrender.com/api/reports' 
+            : '/api/reports';
+
         function startContributorSession() {
             const name = document.getElementById('contribName').value.trim();
             const phone = document.getElementById('contribPhone').value.trim();
@@ -220,7 +225,7 @@
                         coords.lng = pos.coords.longitude;
                         if (log) log.innerText = `GPS Locked: [${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}]`;
                     },
-                    () => { if (log) log.innerText = 'GPS permission denied or unavailable.'; },
+                    () => { if (log) log.innerText = 'GPS permission denied. Using fallback location.'; },
                     { enableHighAccuracy: true }
                 );
             }
@@ -312,7 +317,7 @@
                     aiBadge.innerText = `AI Detected: ${res.label} (${pct}%)`;
                     severitySelect.value = res.confidence > 0.85 ? 'Severe' : 'Medium';
 
-                    if (res.confidence > 0.82 && coords.lat) {
+                    if (res.confidence > 0.82) {
                         isAutoReporting = true;
                         aiBadge.innerText = `Auto-capturing ${res.label} report...`;
                         await submitReport(res.label, severitySelect.value);
@@ -330,10 +335,9 @@
         }
 
         async function submitReport(damageType, severity) {
-            if (!coords.lat || !coords.lng) {
-                alert('Waiting for GPS location lock...');
-                return;
-            }
+            // Use live GPS or fallback default coordinates if GPS isn't locked yet
+            const latitude = coords.lat || 20.2961;
+            const longitude = coords.lng || 85.8245;
 
             canvas.width = 480;
             canvas.height = 360;
@@ -345,14 +349,14 @@
             const imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
 
             try {
-                const response = await fetch('https://roadguard-ai-starter-1.onrender.com', {
+                const response = await fetch(BACKEND_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        contributor_name: contributor.name,
-                        contributor_phone: contributor.phone,
-                        latitude: coords.lat,
-                        longitude: coords.lng,
+                        contributor_name: contributor ? contributor.name : 'Anonymous',
+                        contributor_phone: contributor ? contributor.phone : '0000000000',
+                        latitude: latitude,
+                        longitude: longitude,
                         severity: severity,
                         damage_type: damageType,
                         image_base64: imageBase64
@@ -362,11 +366,13 @@
                 if (data.duplicate) {
                     if (log) log.innerText = data.message;
                 } else {
-                    alert(data.message);
+                    alert(data.message || 'Report successfully submitted to Admin database!');
                     if (log) log.innerText = 'Report successfully submitted to Admin!';
                 }
             } catch (err) {
-                alert('Failed to connect to server.');
+                console.error("Submission error:", err);
+                alert('Failed to connect to backend server. Ensure backend is running.');
+                if (log) log.innerText = 'Server connection failed.';
             }
         }
     </script>
