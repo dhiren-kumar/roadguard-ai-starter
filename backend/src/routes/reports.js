@@ -18,7 +18,7 @@ function present(report) {
         status: r.status,
         latitude: r.location.coordinates[1],
         longitude: r.location.coordinates[0],
-        location_name: `${r.location.coordinates[1]}, ${r.location.coordinates[0]}`,
+        location_name: r.locationName || `${r.location.coordinates[1]}, ${r.location.coordinates[0]}`,
         image_base64: r.imageUrl,
         image_url: r.imageUrl,
         contributor_name: r.contributorName || (r.submittedBy && r.submittedBy.name) || "Contributor",
@@ -37,7 +37,7 @@ router.get("/public", async (req, res) => {
         const reports = await Report.find({
             status: { $in: ["approved", "under-construction", "resolved"] }
         })
-            .select("_id damageType severity status location imageUrl createdAt")
+            .select("_id damageType severity status location locationName imageUrl createdAt")
             .sort({ createdAt: -1 })
             .limit(100)
             .lean();
@@ -50,7 +50,7 @@ router.get("/public", async (req, res) => {
             status: r.status,
             latitude: r.location.coordinates[1],
             longitude: r.location.coordinates[0],
-            location_name: `${r.location.coordinates[1]}, ${r.location.coordinates[0]}`,
+            location_name: r.locationName || `${r.location.coordinates[1]}, ${r.location.coordinates[0]}`,
             image_url: r.imageUrl,
             timestamp: r.createdAt
         })));
@@ -82,6 +82,7 @@ router.post("/", async (req, res) => {
         const contributorPhone = typeof req.body.contributor_phone === "string" ? req.body.contributor_phone.trim().slice(0, 20) : "";
         const contributorEmail = typeof req.body.contributor_email === "string" ? req.body.contributor_email.trim().toLowerCase().slice(0, 254) : "";
         const contributorLocation = typeof req.body.contributor_location === "string" ? req.body.contributor_location.trim().slice(0, 200) : "";
+        const locationName = typeof req.body.location_name === "string" ? req.body.location_name.trim().slice(0, 200) : "";
         const damageType = String(req.body.damage_type || req.body.damageType || "Road damage").trim().slice(0, 100);
         const description = String(req.body.description || damageType).trim().slice(0, 1000);
         const image = typeof req.body.image_base64 === "string" ? req.body.image_base64 : req.body.imageUrl;
@@ -119,6 +120,7 @@ router.post("/", async (req, res) => {
             contributorEmail,
             contributorLocation,
             location: { type: "Point", coordinates: [longitude, latitude] },
+            locationName,
             damageType,
             severity,
             description,
