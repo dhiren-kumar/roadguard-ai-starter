@@ -62,6 +62,54 @@ router.get("/public", async (req, res) => {
     }
 });
 
+
+// Public detail endpoint: expose full evidence only for reports already visible publicly.
+router.get("/public/:id", async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid report ID." });
+        }
+        const report = await Report.findOne({
+            _id: req.params.id,
+            status: { $in: ["approved", "under-construction", "resolved"] }
+        }).lean();
+        if (!report) return res.status(404).json({ success: false, message: "Public report not found." });
+        const photos = Array.isArray(report.evidencePhotos) && report.evidencePhotos.length
+            ? report.evidencePhotos
+            : [{ imageUrl: report.imageUrl, detections: [] }];
+        const damageCount = Number.isFinite(report.damageCount)
+            ? report.damageCount
+            : photos.reduce((sum, photo) => sum + ((photo.detections || []).length), 0);
+        res.set("Cache-Control", "public, max-age=15, stale-while-revalidate=45");
+        return res.json({
+            success: true,
+            data: {
+                id: report._id,
+                damage_type: report.damageType,
+                severity: report.severity,
+                description: report.description,
+                status: report.status,
+                latitude: report.location.coordinates[1],
+                longitude: report.location.coordinates[0],
+                location_name: report.locationName || "",
+                timestamp: report.createdAt,
+                evidence_photos: photos.map(photo => ({
+                    image_url: photo.imageUrl,
+                    detections: (photo.detections || []).map(d => ({
+                        label: d.label,
+                        confidence: d.confidence,
+                        boundingBox: d.boundingBox || null
+                    }))
+                })),
+                damage_count: damageCount
+            }
+        });
+    } catch (error) {
+        console.error("Public report detail error:", error);
+        return res.status(500).json({ success: false, message: "Unable to load report details." });
+    }
+});
+
 // Admin queue: authentication and role are checked on the server.
 router.get("/", protect, adminOnly, async (req, res) => {
     try {
