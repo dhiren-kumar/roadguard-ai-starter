@@ -39,6 +39,7 @@ if (navigator.geolocation) {
     );
 }
 
+
 <<<<<<< HEAD
 // 2. Load Model into Local Device RAM
 =======
@@ -177,6 +178,43 @@ function logout() {
     localStorage.removeItem('user');
     window.location.href = 'login.html';
 <<<<<<< HEAD
+
+    async function loadHomeReports() {
+    try {
+        const response = await fetch('/api/reports');
+        const reports = await response.json();
+        
+        const grid = document.getElementById('reports-grid');
+        if (!grid) return;
+        
+        grid.innerHTML = '';
+        
+        if (reports.length === 0) {
+            grid.innerHTML = '<p>No recent reports found.</p>';
+            return;
+        }
+
+        reports.slice(0, 6).forEach(report => {
+            const card = document.createElement('div');
+            card.className = 'report-card';
+            card.style.cssText = 'background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);';
+            
+            card.innerHTML = `
+                <h4 style="margin: 0 0 10px 0; color: #333;">${report.title || 'Hazard Report'}</h4>
+                <p style="margin: 0 0 8px 0; color: #666; font-size: 14px;">${report.description || 'No description provided.'}</p>
+                <small style="color: #999;">Status: <b>${report.status || 'Pending'}</b></small>
+            `;
+            grid.appendChild(card);
+        });
+    } catch (error) {
+        console.error('Failed to load reports for home page:', error);
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadHomeReports();
+});
 }
 =======
 }
