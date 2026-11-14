@@ -122,8 +122,9 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
     reports.forEach(r=>{
       const tr=document.createElement("tr");
       const photo=document.createElement("td");
-      if(typeof r.image_base64==="string" && /^data:image\/(jpeg|jpg|png|webp);base64,/.test(r.image_base64)){
-        const img=document.createElement("img");img.className="report-img";img.src=r.image_base64;img.alt="Road damage report";img.loading="lazy";photo.appendChild(img);
+      const imageSrc = typeof r.image_url === "string" ? r.image_url : r.image_base64;
+      if(typeof imageSrc==="string" && (/^https:\/\/res\.cloudinary\.com\/[A-Za-z0-9_-]+\//.test(imageSrc) || /^data:image\/(jpeg|jpg|png|webp);base64,/.test(imageSrc))){
+        const img=document.createElement("img");img.className="report-img";img.src=imageSrc;img.alt="Road damage report";img.loading="lazy";photo.appendChild(img);
       }else photo.textContent="No photo";
       tr.appendChild(photo);
       cell(tr,r.damage_type||"Road damage");
