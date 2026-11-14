@@ -14,6 +14,8 @@ const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 
 app.disable("x-powered-by");
+// Render runs behind a trusted reverse proxy; this also fixes rate-limit client IP detection.
+app.set("trust proxy", 1);
 app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" }, contentSecurityPolicy: false }));
 app.use(cors({
     origin: process.env.CLIENT_ORIGIN ? process.env.CLIENT_ORIGIN.split(",").map(value => value.trim()) : true,
