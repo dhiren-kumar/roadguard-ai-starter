@@ -1,278 +1,137 @@
-
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
-
 const User = require("../models/User");
 const sendEmail = require("../utils/email");
 const { protect } = require("../middleware/auth");
 
 const router = express.Router();
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// ============================================
-// 1. CONTRIBUTOR REGISTRATION
+function createVerificationHash(token) {
+    return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 // POST /api/auth/register
-// ============================================
-
 router.post("/register", async (req, res) => {
     try {
-        const { name, email, password, locationText } = req.body;
+        const name = typeof req.body.name === "string" ? req.body.name.trim() : "";
+        const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
+        const password = typeof req.body.password === "string" ? req.body.password : "";
+        const locationText = typeof req.body.locationText === "string" ? req.body.locationText.trim().slice(0, 200) : "";
 
-        if (!name || !email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: "Name, email and password are required."
-            });
+        if (!name || name.length > 100 || !EMAIL_RE.test(email) || !password) {
+            return res.status(400).json({ success: false, message: "Enter a valid name, email and password." });
+        }
+        if (password.length < 8 || password.length > 72) {
+            return res.status(400).json({ success: false, message: "Password must be between 8 and 72 characters." });
         }
 
-        if (password.length < 8) {
-            return res.status(400).json({
-                success: false,
-                message: "Password must contain at least 8 characters."
-            });
-        }
-
-        const normalizedEmail = email.toLowerCase().trim();
-
-        const existingUser = await User.findOne({
-            email: normalizedEmail
-        });
-
-        if (existingUser) {
-            return res.status(409).json({
-                success: false,
-                message: "Email already registered."
-            });
-        }
-
-        // Generate verification token
-        const verificationToken = crypto
-            .randomBytes(32)
-            .toString("hex");
-
-        const verificationHash = crypto
-            .createHash("sha256")
-            .update(verificationToken)
-            .digest("hex");
-
-        // Create contributor
+        const verificationToken = crypto.randomBytes(32).toString("hex");
         const user = await User.create({
-            name: name.trim(),
-            email: normalizedEmail,
+            name,
+            email,
             passwordHash: await bcrypt.hash(password, 12),
-            locationText: locationText || "",
+            locationText,
             role: "contributor",
             isEmailVerified: false,
-            emailVerificationTokenHash: verificationHash,
-            emailVerificationExpires: new Date(
-                Date.now() + 30 * 60 * 1000
-            )
+            emailVerificationTokenHash: createVerificationHash(verificationToken),
+            emailVerificationExpires: new Date(Date.now() + 30 * 60 * 1000)
         });
 
-        // Send verification email
+        const apiBase = (process.env.API_BASE_URL || "http://localhost:5000").replace(/\/$/, "");
+        const verificationUrl = `${apiBase}/api/auth/verify-email?token=${encodeURIComponent(verificationToken)}`;
+        const html = `<p>Hello ${name.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))},</p>
+            <p>Verify your RoadGuard AI account using the link below. This link expires in 30 minutes.</p>
+            <p><a href="${verificationUrl}">Verify email address</a></p>`;
         try {
-            await sendEmail(
-                user.email,
-                user.name,
-                verificationToken
-            );
+            await sendEmail(email, "Verify your RoadGuard AI account", html);
         } catch (emailError) {
             await User.findByIdAndDelete(user._id);
-            console.error("Email error:", emailError);
-            return res.status(500).json({
-                success: false,
-                message: "Unable to send verification email."
-            });
+            console.error("Verification email could not be sent:", emailError.message);
+            return res.status(503).json({ success: false, message: "Verification email could not be sent. Check the server email configuration and try again." });
         }
 
-        return res.status(201).json({
-            success: true,
-            message: "Registration successful. Please verify your email."
-        });
-
+        return res.status(201).json({ success: true, message: "Registration successful. Check your email to verify your account." });
     } catch (error) {
+        if (error && error.code === 11000) {
+            return res.status(409).json({ success: false, message: "That email address is already registered." });
+        }
         console.error("Registration error:", error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Registration failed."
-        });
+        return res.status(500).json({ success: false, message: "Registration failed." });
     }
 });
 
-
-// ============================================
-// 2. VERIFY EMAIL
 // GET /api/auth/verify-email?token=...
-// ============================================
-
 router.get("/verify-email", async (req, res) => {
     try {
-        const token = String(req.query.token || "");
-
-        if (!token) {
-            return res.status(400).send(
-                "Verification token is missing."
-            );
+        const token = typeof req.query.token === "string" ? req.query.token : "";
+        if (!/^[a-f0-9]{64}$/i.test(token)) {
+            return res.status(400).send("Invalid or expired verification link.");
         }
-
-        const verificationHash = crypto
-            .createHash("sha256")
-            .update(token)
-            .digest("hex");
-
         const user = await User.findOne({
-            emailVerificationTokenHash: verificationHash,
-            emailVerificationExpires: {
-                $gt: new Date()
-            }
+            emailVerificationTokenHash: createVerificationHash(token),
+            emailVerificationExpires: { $gt: new Date() }
         });
-
-        if (!user) {
-            return res.status(400).send(
-                "Invalid or expired verification link."
-            );
-        }
+        if (!user) return res.status(400).send("Invalid or expired verification link.");
 
         user.isEmailVerified = true;
-        user.emailVerificationTokenHash = null;
-        user.emailVerificationExpires = null;
-
+        user.emailVerificationTokenHash = undefined;
+        user.emailVerificationExpires = undefined;
         await user.save();
-
-        return res.send(
-            "Email verified successfully. You can now log in."
-        );
-
+        return res.send("Email verified successfully. You can now sign in to RoadGuard AI.");
     } catch (error) {
-        console.error("Verification error:", error);
-
-        return res.status(500).send(
-            "Email verification failed."
-        );
+        console.error("Email verification error:", error);
+        return res.status(500).send("Email verification failed. Please try again.");
     }
 });
 
-
-// ============================================
-// 3. USER LOGIN
 // POST /api/auth/login
-// ============================================
-
 router.post("/login", async (req, res) => {
     try {
-        const { email, password } = req.body;
-
+        const email = typeof req.body.email === "string" ? req.body.email.trim().toLowerCase() : "";
+        const password = typeof req.body.password === "string" ? req.body.password : "";
         if (!email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: "Email and password are required."
-            });
+            return res.status(400).json({ success: false, message: "Email and password are required." });
         }
-
-        const normalizedEmail = email.toLowerCase().trim();
-
-        const user = await User.findOne({
-            email: normalizedEmail
-        });
-
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: "Invalid email or password."
-            });
-        }
-
-        const passwordMatched = await bcrypt.compare(
-            password,
-            user.passwordHash
-        );
-
+        const user = await User.findOne({ email });
+        const passwordMatched = user ? await bcrypt.compare(password, user.passwordHash) : false;
         if (!passwordMatched) {
-            return res.status(401).json({
-                success: false,
-                message: "Invalid email or password."
-            });
+            return res.status(401).json({ success: false, message: "Invalid email or password." });
         }
-
         if (!user.isEmailVerified) {
-            return res.status(403).json({
-                success: false,
-                message: "Please verify your email first."
-            });
+            return res.status(403).json({ success: false, message: "Please verify your email before signing in." });
         }
-
-        if (!process.env.JWT_SECRET) {
-            throw new Error("JWT_SECRET is missing in .env");
+        if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+            console.error("JWT_SECRET must be configured with at least 32 characters.");
+            return res.status(503).json({ success: false, message: "Authentication is not configured on the server." });
         }
 
         const token = jwt.sign(
-            {
-                sub: user._id.toString(),
-                role: user.role
-            },
+            { sub: user._id.toString() },
             process.env.JWT_SECRET,
-            {
-                expiresIn: process.env.JWT_EXPIRES_IN || "7d"
-            }
+            { expiresIn: process.env.JWT_EXPIRES_IN || "2h", issuer: "roadguard-ai", audience: "roadguard-ai-client" }
         );
-
-        return res.status(200).json({
+        return res.json({
             success: true,
             message: "Login successful.",
-            token: token,
-            user: {
-                id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                locationText: user.locationText
-            }
+            token,
+            expiresIn: process.env.JWT_EXPIRES_IN || "2h",
+            user: { id: user._id, name: user.name, email: user.email, role: user.role, locationText: user.locationText }
         });
-
     } catch (error) {
         console.error("Login error:", error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Login failed."
-        });
+        return res.status(500).json({ success: false, message: "Login failed." });
     }
 });
 
-
-// ============================================
-// 4. GET CURRENT USER PROFILE
 // GET /api/auth/me
-// ============================================
-
-router.get("/me", protect, async (req, res) => {
-    try {
-        return res.status(200).json({
-            success: true,
-            user: {
-                id: req.user._id,
-                name: req.user.name,
-                email: req.user.email,
-                role: req.user.role,
-                locationText: req.user.locationText
-            }
-        });
-
-    } catch (error) {
-        console.error("Profile error:", error);
-
-        return res.status(500).json({
-            success: false,
-            message: "Unable to fetch user profile."
-        });
-    }
+router.get("/me", protect, (req, res) => {
+    res.json({
+        success: true,
+        user: { id: req.user._id, name: req.user.name, email: req.user.email, role: req.user.role, locationText: req.user.locationText }
+    });
 });
-
-
-// ============================================
-// 5. EXPORT ROUTER
-// ============================================
 
 module.exports = router;
