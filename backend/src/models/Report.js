@@ -48,10 +48,22 @@ const reportSchema = new mongoose.Schema(
             trim: true
         },
 
-        imageUrl: {
-            type: String,
-            required: true
-        },
+        imageUrl: { type: String, required: true },
+        // Optional for legacy compatibility: one report can hold several photo-specific AI results.
+        evidencePhotos: [{
+            imageUrl: { type: String, required: true },
+            detections: [{
+                label: { type: String, required: true, trim: true, maxlength: 80 },
+                confidence: { type: Number, min: 0, max: 1 },
+                boundingBox: {
+                    x: { type: Number, min: 0, max: 1 },
+                    y: { type: Number, min: 0, max: 1 },
+                    width: { type: Number, min: 0, max: 1 },
+                    height: { type: Number, min: 0, max: 1 }
+                }
+            }]
+        }],
+        damageCount: { type: Number, min: 0, default: 0 },
 
         status: {
             type: String,
