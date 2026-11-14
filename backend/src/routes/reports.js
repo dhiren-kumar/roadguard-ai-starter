@@ -17,6 +17,7 @@ function present(report) {
         status: r.status,
         latitude: r.location.coordinates[1],
         longitude: r.location.coordinates[0],
+        location_name: `${r.location.coordinates[1]}, ${r.location.coordinates[0]}`,
         image_base64: r.imageUrl,
         contributor_name: r.submittedBy && r.submittedBy.name ? r.submittedBy.name : "Contributor",
         timestamp: r.createdAt
