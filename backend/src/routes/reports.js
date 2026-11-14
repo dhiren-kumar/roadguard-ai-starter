@@ -127,7 +127,15 @@ router.post("/", async (req, res) => {
             });
             const detections = (photo.detections || []).map(d => ({
                 label: String(d.label || "Road damage").trim().slice(0, 80),
-                confidence: Number.isFinite(Number(d.confidence)) ? Math.max(0, Math.min(1, Number(d.confidence))) : undefined
+                confidence: Number.isFinite(Number(d.confidence)) ? Math.max(0, Math.min(1, Number(d.confidence))) : undefined,
+                ...(d.boundingBox && typeof d.boundingBox === "object" ? {
+                    boundingBox: {
+                        x: Math.max(0, Math.min(1, Number(d.boundingBox.x))),
+                        y: Math.max(0, Math.min(1, Number(d.boundingBox.y))),
+                        width: Math.max(0, Math.min(1, Number(d.boundingBox.width))),
+                        height: Math.max(0, Math.min(1, Number(d.boundingBox.height)))
+                    }
+                } : {})
             }));
             evidencePhotos.push({ imageUrl: uploaded.secure_url, detections });
         }
