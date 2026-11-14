@@ -22,7 +22,7 @@ app.use(cors({
     methods: ["GET", "POST", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"]
 }));
-app.use(express.json({ limit: "6mb" }));
+// Supports up to five compressed evidence photos in one grouped report.\napp.use(express.json({ limit: "30mb" }));
 app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
 const authLimiter = rateLimit({
