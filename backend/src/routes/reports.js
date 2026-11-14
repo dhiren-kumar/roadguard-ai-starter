@@ -53,7 +53,7 @@ router.post("/", protect, contributorOnly, async (req, res) => {
         const latitude = Number(req.body.latitude);
         const longitude = Number(req.body.longitude);
         const severityInput = String(req.body.severity || "medium").toLowerCase();
-        const severity = ({ severe: "high", normal: "low" })[severityInput] || severityInput;
+        const severity = ({ severe: "high", "high red severity": "high", "normal damage": "low", normal: "low" })[severityInput] || severityInput;
         const damageType = String(req.body.damage_type || req.body.damageType || "Road damage").trim().slice(0, 100);
         const description = String(req.body.description || damageType).trim().slice(0, 1000);
         const image = typeof req.body.image_base64 === "string" ? req.body.image_base64 : req.body.imageUrl;
