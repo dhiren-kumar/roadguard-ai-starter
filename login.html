@@ -21,8 +21,27 @@ input{background:#fff;color:#17251f;border:1px solid #dce5de;border-radius:8px}
 button{background:#176b4b;border-radius:8px}button:hover{background:#10553b}
 .switch{background:#fff;color:#176b4b;border:1px solid #b9d3c4}.status{color:#176b4b}a{color:#176b4b}
 </style>
+
+<style>
+/* Dedicated administrator sign-in presentation */
+body.admin-mode{background:radial-gradient(circle at top,#1e3a5f 0,#0b1220 58%,#070d18 100%);color:#e5eefb}
+body.admin-mode .card{background:#111c2e;border:1px solid #29415f;border-radius:18px;box-shadow:0 24px 70px #0008;color:#e5eefb;max-width:440px}
+body.admin-mode h1{color:#60a5fa;font-size:27px;letter-spacing:.2px}
+body.admin-mode p{color:#a9bdd7}
+body.admin-mode label{color:#c7d8ee}
+body.admin-mode input{background:#0b1423;color:#f8fafc;border:1px solid #38516f;border-radius:9px}
+body.admin-mode input:focus{outline:2px solid #3b82f6;outline-offset:1px}
+body.admin-mode #submitBtn{background:#2563eb;border-radius:9px}
+body.admin-mode #submitBtn:hover{background:#1d4ed8}
+body.admin-mode #toggle{display:none}
+body.admin-mode .status{color:#fbbf24}
+body.admin-mode a{color:#93c5fd}
+.admin-mark{display:none}
+body.admin-mode .admin-mark{display:block;text-align:center;color:#93c5fd;font-size:11px;font-weight:700;letter-spacing:2px;margin-bottom:12px}
+</style>
 </head>
 <body><main class="card">
+<div class="admin-mark">ROADGUARD AI · ADMINISTRATOR ACCESS</div>
 <h1>RoadGuard AI</h1><p id="intro">Sign in to your account to report road damage or manage reports.</p>
 <form id="authForm">
 <div id="nameWrap" hidden><label for="name">Full name</label><input id="name" autocomplete="name"></div>
@@ -37,6 +56,8 @@ button{background:#176b4b;border-radius:8px}button:hover{background:#10553b}
 </main>
 <script>
 let registering=false;
+const adminMode=new URLSearchParams(window.location.search).get("mode")==="admin";
+if(adminMode){document.body.classList.add("admin-mode");document.title="RoadGuard AI - Administrator Sign in";document.querySelector("h1").textContent="Administrator Sign in";document.getElementById("intro").textContent="Restricted access. Sign in with your RoadGuard AI administrator account.";document.getElementById("toggle").hidden=true;}
 const form=document.getElementById("authForm");
 const statusEl=document.getElementById("status");
 document.getElementById("toggle").addEventListener("click",()=>{
@@ -67,6 +88,7 @@ form.addEventListener("submit",async event=>{
   if(!response.ok)throw new Error(data.message||`Login failed (HTTP ${response.status}).`);
 
   if(registering){statusEl.textContent=data.message;return;}
+  if(adminMode && data.user.role!=="admin"){statusEl.textContent="Access denied. This sign-in page is for administrators only.";return;}
   sessionStorage.setItem("roadguard_token",data.token);
   sessionStorage.setItem("roadguard_user",JSON.stringify(data.user));
   window.location.href=data.user.role==="admin"?"admin.html":"dashboard.html";
