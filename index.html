@@ -51,7 +51,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
     <div class="table-wrap">
       <table>
         <thead><tr><th>Photo</th><th>Damage type</th><th>Severity</th><th>Location</th><th>District</th><th>Reported on</th><th>Progress status</th></tr></thead>
-        <tbody id="reportTable"><tr><td colspan="6" class="empty">Loading public reports…</td></tr></tbody>
+        <tbody id="reportTable"><tr><td colspan="7" class="empty">Loading public reports…</td></tr></tbody>
       </table>
     </div>
     <p class="status-note">Report progress is read-only on this public page. Only authorised administrators can change a report's status.</p>
@@ -158,7 +158,8 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       statusCell.appendChild(badge);tr.appendChild(statusCell);
       table.appendChild(tr);
       if(Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180){
-        const severity=String(r.severity||"").toLowerCase().trim();\n        const color=severity==="high"?"#ef4444":severity==="medium"?"#f59e0b":severity==="low"?"#22c55e":"#94a3b8";
+        const severity=String(r.severity||"").toLowerCase().trim();
+        const color=severity==="high"?"#ef4444":severity==="medium"?"#f59e0b":severity==="low"?"#22c55e":"#94a3b8";
         const marker=L.circleMarker([lat,lng],{radius:9,fillColor:color,color:"#0f172a",weight:1,fillOpacity:.9}).addTo(markers);
         reportMarkers.set(String(r._id||r.id||r.timestamp||lat+","+lng),marker);
         const popup=document.createElement("div");
