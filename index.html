@@ -75,7 +75,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   const table=document.getElementById("reportTable");
   const reportCount=document.getElementById("reportCount");
   const mapStatus=document.getElementById("mapStatus");
-  const map=L.map("map",{scrollWheelZoom:false}).setView([20.2961,85.8245],7);
+  const map=L.map("map",{scrollWheelZoom:true, doubleClickZoom:true, zoomControl:true}).setView([20.2961,85.8245],7);
   L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:'Tiles &copy; Esri &mdash; Sources: Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), OpenStreetMap contributors, and the GIS User Community'}).addTo(map);
   const markers=L.layerGroup().addTo(map);
   const legend=L.control({position:"bottomright"});
