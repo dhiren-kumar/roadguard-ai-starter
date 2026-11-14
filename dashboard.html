@@ -181,13 +181,10 @@ button.action-btn:hover{background:#10553b}
     <div id="gpsPlace" style="margin-top:4px">Road/place name: Select the labelled road or nearby place on the map below.</div>
   </div>
   <div style="margin:10px 0;padding:12px;background:#f2f6f2;border:1px solid #dce5de;border-radius:8px;color:#405449;font-size:13px">
-    <strong>Choose report location</strong>
-    <p style="margin:6px 0 10px">The map opens at your GPS position. Zoom in and tap the road/place you want to report. Read its visible map label and enter it below if needed. No background name lookups are performed.</p>
-    <div id="reportLocationMap" style="height:260px;width:100%;border-radius:8px;z-index:1"></div>
-    <div id="selectedLocationCoords" style="margin-top:8px">Selected coordinates: Waiting for GPS…</div>
-    <label for="reportLocationName" style="margin-top:10px">Road / nearby place name (from map label)</label>
-    <input id="reportLocationName" type="text" maxlength="200" placeholder="Enter the road or nearby place name shown on the map" style="margin-bottom:8px">
-    <button type="button" id="useGpsLocation" class="action-btn" style="background:#475569">Use my current GPS location</button>
+    <strong>Report place name</strong>
+    <p style="margin:6px 0 10px">Enter the road name or a nearby place name. GPS coordinates are attached automatically for the map.</p>
+    <label for="reportLocationName" style="margin-top:10px">Road / nearby place name</label>
+    <input id="reportLocationName" type="text" maxlength="200" placeholder="e.g. Janpath Road, near XYZ School" style="margin-bottom:8px">
   </div>
 
             <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:8px;" id="localCountInfo">Stored Local Reports: 0</div>
@@ -207,11 +204,6 @@ button.action-btn:hover{background:#10553b}
         const aiBadge = document.getElementById('aiBadge');
 
         let coords = { lat: null, lng: null };
-        let currentLocationName = '';
-        let selectedReportCoords = null;
-        let userPickedReportLocation = false;
-        let locationMap = null;
-        let selectedLocationMarker = null;
         let gpsWatchId = null;
         let ortSession = null;
         let isScanning = false;
@@ -247,53 +239,6 @@ button.action-btn:hover{background:#10553b}
         window.onload = () => updateLocalStorageCount();
 
 
-        function updateSelectedLocation(lat, lng, recenter = false) {
-            selectedReportCoords = { lat, lng };
-            const coordsEl = document.getElementById('selectedLocationCoords');
-            if (coordsEl) coordsEl.textContent = 'Selected coordinates: ' + lat.toFixed(6) + ', ' + lng.toFixed(6);
-            if (locationMap) {
-                if (!selectedLocationMarker) {
-                    selectedLocationMarker = L.marker([lat, lng], { draggable: true }).addTo(locationMap);
-                    selectedLocationMarker.on('dragend', event => {
-                        const point = event.target.getLatLng();
-                        userPickedReportLocation = true;
-                        updateSelectedLocation(point.lat, point.lng, false);
-                    });
-                } else {
-                    selectedLocationMarker.setLatLng([lat, lng]);
-                }
-                if (recenter) locationMap.setView([lat, lng], 17);
-            }
-        }
-
-        function initLocationPicker(lat, lng) {
-            const mapElement = document.getElementById('reportLocationMap');
-            if (!mapElement || !window.L) return;
-            if (!locationMap) {
-                locationMap = L.map(mapElement, { maxZoom: 19, scrollWheelZoom: true }).setView([lat, lng], 17);
-                const street = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                    maxZoom: 19,
-                    attribution: '&copy; OpenStreetMap contributors'
-                }).addTo(locationMap);
-                L.control.layers({ 'Road and place names': street }).addTo(locationMap);
-                locationMap.on('click', event => {
-                    userPickedReportLocation = true;
-                    updateSelectedLocation(event.latlng.lat, event.latlng.lng, false);
-                });
-                setTimeout(() => locationMap.invalidateSize(), 150);
-            }
-            updateSelectedLocation(lat, lng, true);
-        }
-
-        document.getElementById('useGpsLocation').addEventListener('click', () => {
-            if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
-                if (log) log.innerText = 'Waiting for a valid GPS position.';
-                return;
-            }
-            userPickedReportLocation = false;
-            updateSelectedLocation(coords.lat, coords.lng, true);
-        });
-
         function initGPS() {
             const statusEl = document.getElementById('gpsStatus');
             const coordsEl = document.getElementById('gpsCoords');
@@ -309,8 +254,8 @@ button.action-btn:hover{background:#10553b}
                     coords.lng = pos.coords.longitude;
                     if (statusEl) statusEl.textContent = 'Live GPS active · accuracy ±' + Math.round(pos.coords.accuracy) + ' m · updated ' + new Date(pos.timestamp).toLocaleTimeString();
                     if (coordsEl) coordsEl.textContent = 'Coordinates: ' + coords.lat.toFixed(6) + ', ' + coords.lng.toFixed(6);
-                    if (!locationMap) initLocationPicker(coords.lat, coords.lng);
-                    else if (!userPickedReportLocation) updateSelectedLocation(coords.lat, coords.lng, false);
+                    const placeEl = document.getElementById('gpsPlace');
+                    if (placeEl) placeEl.textContent = 'GPS coordinates will be attached automatically to each report.';
                     if (log) log.innerText = 'Live GPS locked: [' + coords.lat.toFixed(5) + ', ' + coords.lng.toFixed(5) + ']';
                 },
                 error => {
@@ -441,8 +386,8 @@ button.action-btn:hover{background:#10553b}
         }
 
         function storeReportLocally(damages, severity) {
-            const latitude = selectedReportCoords ? selectedReportCoords.lat : coords.lat;
-            const longitude = selectedReportCoords ? selectedReportCoords.lng : coords.lng;
+            const latitude = coords.lat;
+            const longitude = coords.lng;
             if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
                 if (log) log.innerText = 'Waiting for a valid GPS fix. No fallback location is used.';
                 return;
@@ -461,7 +406,7 @@ button.action-btn:hover{background:#10553b}
                 contributor_phone: contributor ? contributor.phone : '',
                 contributor_email: contributor ? contributor.email : '',
                 contributor_location: contributor ? contributor.locationText : '',
-                location_name: document.getElementById('reportLocationName').value.trim() || currentLocationName,
+                location_name: document.getElementById('reportLocationName').value.trim(),
                 latitude: latitude,
                 longitude: longitude,
                 severity: severity,
@@ -476,7 +421,7 @@ button.action-btn:hover{background:#10553b}
             localStorage.setItem('roadguard_local_reports', JSON.stringify(localReports));
 
             updateLocalStorageCount();
-            if (log) log.innerText = `Stored locally: ${damages.length} defect(s) [${severity}] at [${latitude.toFixed(4)}, ${longitude.toFixed(4)}]`;
+            if (log) log.innerText = `Stored locally: ${damages.length} defect(s) [${severity}]${newReport.location_name ? ' at ' + newReport.location_name : ''}. GPS attached.`;
         }
 
         function updateLocalStorageCount() {
