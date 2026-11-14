@@ -52,7 +52,7 @@ form.addEventListener("submit",async event=>{
   if(contentType.includes("application/json")){
    try{data=JSON.parse(responseText);}catch{throw new Error("The server returned invalid JSON. Please check the Render deployment logs.");}
   }else{
-   const preview=responseText.replace(/<[^>]*>/g," ").replace(/\\s+/g," ").trim().slice(0,180);
+   const preview=responseText.replace(/<[^>]*>/g," ").replace(/\s+/g," ").trim().slice(0,180);
    throw new Error(`Login API returned HTML instead of JSON (HTTP ${response.status}). ${preview||"The backend may be unavailable or the API route is not being reached."} Check /api/health and the Render service logs.`);
   }
   if(!response.ok)throw new Error(data.message||`Login failed (HTTP ${response.status}).`);
