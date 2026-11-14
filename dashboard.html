@@ -186,9 +186,13 @@ button.action-btn:hover{background:#10553b}
     <input id="reportLocationName" type="text" maxlength="200" placeholder="e.g. Janpath Road, near XYZ School" style="margin-bottom:8px">
   </div>
 
-            <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:8px;" id="localCountInfo">Stored Local Reports: 0</div>
-
-            <button class="action-btn" onclick="sendReportsToPanel()" style="background:#3b82f6;">Send All Reports to Panel</button>
+            <div style="font-size:0.85rem;color:#64748b;margin:12px 0" id="localCountInfo">Saved Road Reports: 0</div>
+            <div id="sessionStatus" class="ai-badge">No active report. Start a report for one road incident.</div>
+            <button class="action-btn" id="startReportBtn" onclick="startReportSession()">Start New Road Report</button>
+            <button class="action-btn" id="capturePhotoBtn" onclick="captureEvidencePhoto()" disabled style="background:#0d9488">Capture Evidence Photo</button>
+            <button class="action-btn" id="finishReportBtn" onclick="finishReportSession()" disabled style="background:#475569">Finish & Save Report</button>
+            <button class="action-btn" onclick="sendReportsToPanel()" style="background:#3b82f6;">Send Saved Reports to Panel</button>
+            <div id="evidencePreview" style="font-size:13px;color:#475569;margin-top:10px"></div>
             <div class="log" id="logBox">Initializing GPS and Camera permissions...</div>
         </div>
     </div>
@@ -206,6 +210,9 @@ button.action-btn:hover{background:#10553b}
         let gpsWatchId = null;
         let ortSession = null;
         let isScanning = false;
+        let latestDetections = [];
+        let activeReportSession = null;
+        const MAX_EVIDENCE_PHOTOS = 5;
         const MODEL_SIZE = 640;
         const DAMAGE_CLASSES = ['Longitudinal Crack', 'Transverse Crack', 'Alligator Crack', 'Pothole'];
 
@@ -370,11 +377,10 @@ button.action-btn:hover{background:#10553b}
 
                     aiBadge.innerText = `Detected ${count} damages (${severity})`;
 
-                    // Automatically capture snapshot and store locally when a defect cluster is found
-                    if (count >= 1) {
-                        storeReportLocally(detectedList, severity);
-                    }
+                    latestDetections = detectedList;
+                    if (activeReportSession) document.getElementById("sessionStatus").textContent = "Active report · " + activeReportSession.photos.length + "/5 photos · " + count + " detection(s) in current frame.";
                 } else {
+                    latestDetections = [];
                     aiBadge.innerText = 'Scanning road locally... (Clear)';
                 }
 
@@ -382,108 +388,116 @@ button.action-btn:hover{background:#10553b}
             }, 2000);
         }
 
-        function storeReportLocally(damages, severity) {
-            const latitude = coords.lat;
-            const longitude = coords.lng;
-            if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-                if (log) log.innerText = 'Waiting for a valid GPS fix. No fallback location is used.';
-                return;
-            }
-
-            canvas.width = 480;
-            canvas.height = 360;
-            const ctx = canvas.getContext('2d');
-            if (video && video.readyState >= 2) {
-                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            }
-            const imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
-
-            // Report the actual AI class names, not just the number of detections.
-            const damageTypeSummary = [...new Set(damages.map(item => item.label).filter(Boolean))].join(', ') || 'Road damage';
-            const newReport = {
-                contributor_name: contributor ? contributor.name : '',
-                contributor_phone: contributor ? contributor.phone : '',
-                contributor_email: contributor ? contributor.email : '',
-                contributor_location: contributor ? contributor.locationText : '',
+        function startReportSession() {
+            if (activeReportSession) return alert('Finish the current report first.');
+            if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return alert('Waiting for a valid GPS fix. Allow location access first.');
+            activeReportSession = {
+                contributor_name: contributor?.name || '',
+                contributor_phone: contributor?.phone || '',
+                contributor_email: contributor?.email || '',
+                contributor_location: contributor?.locationText || '',
                 location_name: document.getElementById('reportLocationName').value.trim(),
-                latitude: latitude,
-                longitude: longitude,
-                severity: severity,
-                damage_type: damageTypeSummary,
-                damage_count: damages.length,
-                damages_detected: damages,
-                image_base64: imageBase64,
-                timestamp: new Date().toISOString()
+                latitude: coords.lat, longitude: coords.lng, timestamp: new Date().toISOString(), photos: []
             };
+            document.getElementById('startReportBtn').disabled = true;
+            document.getElementById('capturePhotoBtn').disabled = false;
+            document.getElementById('finishReportBtn').disabled = false;
+            document.getElementById('sessionStatus').textContent = 'Report started. Capture up to 5 photos of this same road incident.';
+            renderEvidencePreview();
+        }
 
-            let localReports = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
-            localReports.push(newReport);
-            localStorage.setItem('roadguard_local_reports', JSON.stringify(localReports));
+        function captureEvidencePhoto() {
+            if (!activeReportSession) return;
+            if (activeReportSession.photos.length >= MAX_EVIDENCE_PHOTOS) return alert('Maximum 5 photos per report.');
+            if (!video || video.readyState < 2) return alert('Camera is not ready.');
+            const shot = document.createElement('canvas');
+            shot.width = 640; shot.height = 480;
+            shot.getContext('2d').drawImage(video, 0, 0, shot.width, shot.height);
+            const detections = latestDetections.map(d => ({ label: d.label, confidence: d.confidence }));
+            activeReportSession.photos.push({ image_base64: shot.toDataURL('image/jpeg', 0.65), detections, captured_at: new Date().toISOString() });
+            renderEvidencePreview();
+            document.getElementById('sessionStatus').textContent = 'Captured photo ' + activeReportSession.photos.length + '/5 with ' + detections.length + ' AI detection(s).';
+        }
 
+        function renderEvidencePreview() {
+            const el = document.getElementById('evidencePreview');
+            if (!el) return;
+            if (!activeReportSession) { el.textContent = ''; return; }
+            const total = activeReportSession.photos.reduce((n, p) => n + p.detections.length, 0);
+            el.innerHTML = '<strong>Photos: ' + activeReportSession.photos.length + ' · Total detections: ' + total + '</strong>' +
+                '<ol style="padding-left:22px">' + activeReportSession.photos.map((p, i) =>
+                '<li>Photo ' + (i + 1) + ': ' + p.detections.length + ' — ' + (p.detections.map(d => d.label).join(', ') || 'No AI detections') + '</li>').join('') + '</ol>';
+        }
+
+        function finishReportSession() {
+            if (!activeReportSession) return;
+            if (!activeReportSession.photos.length) return alert('Capture at least one evidence photo first.');
+            const all = activeReportSession.photos.flatMap(p => p.detections);
+            const types = [...new Set(all.map(d => d.label).filter(Boolean))];
+            const total = all.length;
+            const report = {
+                ...activeReportSession,
+                damage_type: types.join(', ') || 'Road damage',
+                damage_count: total,
+                severity: total > 10 ? 'high' : total > 4 ? 'medium' : 'low',
+                description: 'One road incident with ' + activeReportSession.photos.length + ' evidence photo(s) and ' + total + ' AI detection(s).'
+            };
+            const saved = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
+            saved.push(report);
+            localStorage.setItem('roadguard_local_reports', JSON.stringify(saved));
+            activeReportSession = null;
+            document.getElementById('startReportBtn').disabled = false;
+            document.getElementById('capturePhotoBtn').disabled = true;
+            document.getElementById('finishReportBtn').disabled = true;
+            document.getElementById('sessionStatus').textContent = 'One grouped report saved locally. Start another incident when ready.';
+            renderEvidencePreview();
             updateLocalStorageCount();
-            if (log) log.innerText = `Stored locally: ${damages.length} defect(s) [${severity}]${newReport.location_name ? ' at ' + newReport.location_name : ''}. GPS attached.`;
+            if (log) log.innerText = 'Saved one report with ' + report.photos.length + ' evidence photo(s) and ' + total + ' AI detection(s).';
         }
 
         function updateLocalStorageCount() {
             const localReports = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
             const infoEl = document.getElementById('localCountInfo');
-            if (infoEl) infoEl.innerText = `Stored Local Reports: ${localReports.length}`;
+            if (infoEl) infoEl.innerText = `Saved Road Reports: ${localReports.length}`;
         }
 
         async function sendReportsToPanel() {
             const localReports = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
-            if (localReports.length === 0) {
-                alert('No local reports stored to send.');
-                return;
-            }
-
+            if (!localReports.length) return alert('No saved reports to send.');
             let successCount = 0;
             const failedReports = [];
-            const failureReasons = [];
-            for (let report of localReports) {
+            const reasons = [];
+            for (const report of localReports) {
                 try {
+                    const photos = Array.isArray(report.photos) && report.photos.length ? report.photos :
+                        [{ image_base64: report.image_base64, detections: report.damages_detected || [] }];
                     const response = await fetch(BACKEND_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
                         body: JSON.stringify({
-                            contributor_name: report.contributor_name,
-                            contributor_phone: report.contributor_phone,
-                            contributor_email: report.contributor_email,
-                            contributor_location: report.contributor_location,
-                            location_name: report.location_name || '',
-                            latitude: report.latitude,
-                            longitude: report.longitude,
-                            severity: report.severity,
-                            description: `Detected ${report.damage_count} road damage item(s) by on-device AI.`,
-                            damage_type: report.damage_type || [...new Set((report.damages_detected || []).map(item => item.label).filter(Boolean))].join(', ') || 'Road damage',
-                            image_base64: report.image_base64
+                            contributor_name: report.contributor_name, contributor_phone: report.contributor_phone,
+                            contributor_email: report.contributor_email, contributor_location: report.contributor_location,
+                            location_name: report.location_name || '', latitude: report.latitude, longitude: report.longitude,
+                            severity: report.severity, description: report.description || 'Road damage detected by on-device AI.',
+                            damage_type: report.damage_type || 'Road damage',
+                            evidence_photos: photos.map(p => ({ image_base64: p.image_base64, detections: p.detections || [] }))
                         })
                     });
-                    const rawBody = await response.text();
-                    let result = {};
-                    try { result = rawBody ? JSON.parse(rawBody) : {}; } catch (_) {}
-                    if (response.ok && result.success) {
-                        successCount++;
-                    } else {
-                        failedReports.push(report);
-                        failureReasons.push(`HTTP ${response.status}: ${result.message || rawBody.slice(0, 180) || 'Server rejected the report'}`);
-                    }
-                } catch (err) {
-                    console.error("Sync error:", err);
-                    failedReports.push(report);
-                    failureReasons.push(err.message || 'Network request failed');
-                }
+                    const raw = await response.text();
+                    let result = {}; try { result = raw ? JSON.parse(raw) : {}; } catch (_) {}
+                    if (response.ok && result.success) successCount++;
+                    else { failedReports.push(report); reasons.push('HTTP ' + response.status + ': ' + (result.message || raw.slice(0, 160))); }
+                } catch (err) { failedReports.push(report); reasons.push(err.message || 'Network error'); }
             }
-
             localStorage.setItem('roadguard_local_reports', JSON.stringify(failedReports));
             updateLocalStorageCount();
-            if (successCount > 0) {
-                alert(`Successfully sent ${successCount} report(s). ${failedReports.length} report(s) remain saved locally.`);
-                if (log) log.innerText = 'Upload finished. Any failed reports remain saved locally.';
+            if (successCount) {
+                alert('Successfully sent ' + successCount + ' grouped report(s). ' + failedReports.length + ' remain saved locally.');
+                if (log) log.innerText = 'Upload finished. Failed reports remain saved locally.';
             } else {
-                const reason = failureReasons[0] || 'Unknown upload error';
-                if (log) log.innerText = `Upload failed: ${reason}. ${failedReports.length} report(s) are still saved on this device.`;
-                alert(`Report upload failed: ${reason}. Your ${failedReports.length} report(s) are still saved locally. Do not clear browser data.`);
+                const reason = reasons[0] || 'Unknown upload error';
+                if (log) log.innerText = 'Upload failed: ' + reason;
+                alert('Report upload failed: ' + reason + '. Your ' + failedReports.length + ' report(s) remain saved locally. Do not clear browser data.');
             }
         }
     </script>
