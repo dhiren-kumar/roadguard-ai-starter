@@ -67,6 +67,7 @@ const reportSchema = new mongoose.Schema(
 
         maintenanceAssignment: {
             staffName: { type: String, trim: true, maxlength: 100, default: "" },
+            staffId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
             department: { type: String, trim: true, maxlength: 120, default: "" }
         },
         repairPriority: { type: String, enum: ["low", "medium", "high", "urgent"], default: "medium" },
