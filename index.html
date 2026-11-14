@@ -217,7 +217,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       if(!Array.isArray(reports))throw new Error("Unexpected reports response.");
       render(reports);mapStatus.textContent="Map updated. "+reports.length+" public report(s) shown.";
     }catch(error){
-      table.replaceChildren();const tr=document.createElement("tr"),td=cell(tr,error.message);td.colSpan=6;td.className="empty";table.appendChild(tr);
+      table.replaceChildren();const tr=document.createElement("tr"),td=cell(tr,error.message);td.colSpan=7;td.className="empty";table.appendChild(tr);
       reportCount.textContent="Reports unavailable";mapStatus.textContent=error.message;
     }
   }
