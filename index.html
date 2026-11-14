@@ -97,7 +97,8 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   const table=document.getElementById("reportTable");
   const reportCount=document.getElementById("reportCount");
   const mapStatus=document.getElementById("mapStatus");
-  const MAP_MAX_ZOOM=18;\n  let allReports=[];
+  const MAP_MAX_ZOOM=18;
+  let allReports=[];
   const map=L.map("map",{scrollWheelZoom:false, doubleClickZoom:true, zoomControl:true,maxZoom:MAP_MAX_ZOOM,minZoom:3}).setView([20.2961,85.8245],7);
   // Explicit mouse-wheel handling: zoom only while the pointer is over the map.
   let wheelZoomTimer=null;
