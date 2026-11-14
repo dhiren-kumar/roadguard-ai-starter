@@ -183,7 +183,7 @@
         const MODEL_SIZE = 640;
         const DAMAGE_CLASSES = ['Longitudinal Crack', 'Transverse Crack', 'Alligator Crack', 'Pothole'];
 
-        // Automatically point to your live backend server or fallback to local
+        // Automatically point to your live Render backend or local server
         const BACKEND_URL = window.location.hostname.includes('github.io') 
             ? 'https://roadguard-backend.onrender.com/api/reports' 
             : '/api/reports';
@@ -225,7 +225,7 @@
                         coords.lng = pos.coords.longitude;
                         if (log) log.innerText = `GPS Locked: [${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}]`;
                     },
-                    () => { if (log) log.innerText = 'GPS permission denied. Using fallback location.'; },
+                    () => { if (log) log.innerText = 'GPS permission denied. Using default fallback location.'; },
                     { enableHighAccuracy: true }
                 );
             }
@@ -317,6 +317,7 @@
                     aiBadge.innerText = `AI Detected: ${res.label} (${pct}%)`;
                     severitySelect.value = res.confidence > 0.85 ? 'Severe' : 'Medium';
 
+                    // Trigger automatic report submission when confidence is high
                     if (res.confidence > 0.82) {
                         isAutoReporting = true;
                         aiBadge.innerText = `Auto-capturing ${res.label} report...`;
@@ -335,7 +336,7 @@
         }
 
         async function submitReport(damageType, severity) {
-            // Use live GPS or fallback default coordinates if GPS isn't locked yet
+            // Fallback default coordinates if GPS hasn't locked yet
             const latitude = coords.lat || 20.2961;
             const longitude = coords.lng || 85.8245;
 
