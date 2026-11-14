@@ -1,41 +1,13 @@
-
-const dns = require("dns");
-
-// Use Google DNS for MongoDB Atlas SRV lookup
-dns.setServers(["8.8.8.8", "8.8.4.4"]);
-
 const mongoose = require("mongoose");
 
-const connectDB = async () => {
-    try {
-        const mongoURI = process.env.MONGODB_URI;
-
-        if (!mongoURI) {
-            throw new Error("MONGODB_URI is missing from .env file");
-        }
-
-        console.log("Connecting to MongoDB Atlas...");
-
-        const conn = await mongoose.connect(mongoURI, {
-            serverSelectionTimeoutMS: 15000
-        });
-
-        console.log("--------------------------------");
-        console.log("MongoDB Connected Successfully!");
-        console.log("Database Host:", conn.connection.host);
-        console.log("Database Name:", conn.connection.name);
-        console.log("--------------------------------");
-
-        return conn;
-
-    } catch (error) {
-        console.error("--------------------------------");
-        console.error("MongoDB Connection Failed!");
-        console.error("Error:", error.message);
-        console.error("--------------------------------");
-
-        throw error;
+async function connectDB() {
+    const mongoURI = process.env.MONGODB_URI;
+    if (!mongoURI || !/^mongodb(\+srv)?:\/\//i.test(mongoURI)) {
+        throw new Error("MONGODB_URI is missing or is not a valid MongoDB connection string.");
     }
-};
+    const connection = await mongoose.connect(mongoURI, { serverSelectionTimeoutMS: 15000 });
+    console.log(`MongoDB connected: ${connection.connection.host}/${connection.connection.name}`);
+    return connection;
+}
 
 module.exports = connectDB;
