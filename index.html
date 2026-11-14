@@ -124,7 +124,9 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       const photo=document.createElement("td");
       const imageSrc = typeof r.image_url === "string" ? r.image_url : r.image_base64;
       if(typeof imageSrc==="string" && (/^https:\/\/res\.cloudinary\.com\/[A-Za-z0-9_-]+\//.test(imageSrc) || /^data:image\/(jpeg|jpg|png|webp);base64,/.test(imageSrc))){
-        const img=document.createElement("img");img.className="report-img";img.src=imageSrc;img.alt="Road damage report";img.loading="lazy";photo.appendChild(img);
+        const link=document.createElement("a");link.href=imageSrc;link.target="_blank";link.rel="noopener noreferrer";link.title="Open full-size report photo";
+        const img=document.createElement("img");img.className="report-img";img.src=imageSrc;img.alt="Road damage report — open full-size photo";img.loading="lazy";
+        img.onerror=()=>{link.replaceWith(document.createTextNode("Photo unavailable"));};link.appendChild(img);photo.appendChild(link);
       }else photo.textContent="No photo";
       tr.appendChild(photo);
       cell(tr,r.damage_type||"Road damage");
