@@ -103,19 +103,6 @@ router.post("/", async (req, res) => {
         if (!SEVERITIES.includes(severity)) {
             return res.status(400).json({ success: false, message: "Severity must be low, medium or high." });
         }
-        if (typeof image !== "string" || !/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(image) || image.length > 5 * 1024 * 1024) {
-            return res.status(400).json({ success: false, message: "A valid image (maximum 3.7 MB) is required." });
-        }
-
-        // Upload the submitted image to Cloudinary; MongoDB stores only its HTTPS URL.
-        const cloudinary = configureCloudinary();
-        const uploadedImage = await cloudinary.uploader.upload(image, {
-            folder: "roadguard-ai/reports",
-            resource_type: "image",
-            allowed_formats: ["jpg", "jpeg", "png", "webp"],
-            transformation: [{ quality: "auto:good", fetch_format: "auto" }]
-        });
-
         if (!photos.length || photos.length > 5) {
             return res.status(400).json({ success: false, message: "Add between 1 and 5 evidence photos." });
         }
