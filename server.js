@@ -34,7 +34,13 @@ const authLimiter = rateLimit({
 app.get("/api/health", (req, res) => res.json({ success: true, service: "RoadGuard AI API" }));
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/reports", reportRoutes);
-app.use(express.static(path.join(__dirname)));
+app.use((req, res, next) => {
+    if (/^\/(backend|node_modules|\.git|\.env)(\/|$)/i.test(req.path)) {
+        return res.status(404).json({ success: false, message: "Not found." });
+    }
+    return next();
+});
+app.use(express.static(path.join(__dirname), { dotfiles: "deny", index: "index.html" }));
 
 app.use((req, res) => res.status(404).json({ success: false, message: "Route not found." }));
 app.use((error, req, res, next) => {
