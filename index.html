@@ -108,7 +108,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   const markers=L.layerGroup().addTo(map);
   const reportMarkers=new Map();
   const legend=L.control({position:"bottomright"});
-  legend.onAdd=()=>{const el=L.DomUtil.create("div","legend");el.innerHTML='<b>Report progress</b><br><span class="dot" style="background:#3b82f6"></span>Approved<br><span class="dot" style="background:#f97316"></span>Under construction<br><span class="dot" style="background:#22c55e"></span>Resolved';return el;};
+  legend.onAdd=()=>{const el=L.DomUtil.create("div","legend");el.innerHTML='<b>Damage severity</b><br><span class="dot" style="background:#ef4444"></span>High<br><span class="dot" style="background:#f59e0b"></span>Medium<br><span class="dot" style="background:#22c55e"></span>Low<br><span class="dot" style="background:#94a3b8"></span>Unspecified';return el;};
   legend.addTo(map);
   document.getElementById("year").textContent=new Date().getFullYear();
 
@@ -158,12 +158,12 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       statusCell.appendChild(badge);tr.appendChild(statusCell);
       table.appendChild(tr);
       if(Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180){
-        const color=status==="resolved"?"#22c55e":status==="under-construction"?"#f97316":"#3b82f6";
+        const severity=String(r.severity||"").toLowerCase().trim();\n        const color=severity==="high"?"#ef4444":severity==="medium"?"#f59e0b":severity==="low"?"#22c55e":"#94a3b8";
         const marker=L.circleMarker([lat,lng],{radius:9,fillColor:color,color:"#0f172a",weight:1,fillOpacity:.9}).addTo(markers);
         reportMarkers.set(String(r._id||r.id||r.timestamp||lat+","+lng),marker);
         const popup=document.createElement("div");
         const title=document.createElement("strong");title.textContent=r.damage_type||"Road damage";popup.appendChild(title);
-        const line=document.createElement("p");line.textContent="Status: "+status.replaceAll("-"," ");popup.appendChild(line);
+        const line=document.createElement("p");line.textContent="Severity: "+(r.severity||"Unspecified");popup.appendChild(line);
         const loc=document.createElement("small");loc.textContent=r.location_name||"Road/place name not provided";popup.appendChild(loc);
         const district=document.createElement("p");district.textContent="District: not looked up yet";district.style.margin="8px 0";popup.appendChild(district);
         const publicLink=document.createElement("a");
