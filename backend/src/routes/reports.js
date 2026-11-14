@@ -21,6 +21,8 @@ function present(report) {
         location_name: r.locationName || `${r.location.coordinates[1]}, ${r.location.coordinates[0]}`,
         image_base64: r.imageUrl,
         image_url: r.imageUrl,
+        evidence_photos: (r.evidencePhotos && r.evidencePhotos.length ? r.evidencePhotos : [{ imageUrl: r.imageUrl, detections: [] }]).map(p => ({ image_url: p.imageUrl, detections: p.detections || [] })),
+        damage_count: Number.isFinite(r.damageCount) ? r.damageCount : (r.evidencePhotos || []).reduce((n, p) => n + (p.detections || []).length, 0),
         contributor_name: r.contributorName || (r.submittedBy && r.submittedBy.name) || "Contributor",
         contributor_phone: r.contributorPhone || "",
         contributor_email: r.contributorEmail || "",
@@ -85,7 +87,8 @@ router.post("/", async (req, res) => {
         const locationName = typeof req.body.location_name === "string" ? req.body.location_name.trim().slice(0, 200) : "";
         const damageType = String(req.body.damage_type || req.body.damageType || "Road damage").trim().slice(0, 100);
         const description = String(req.body.description || damageType).trim().slice(0, 1000);
-        const image = typeof req.body.image_base64 === "string" ? req.body.image_base64 : req.body.imageUrl;
+        const legacyImage = typeof req.body.image_base64 === "string" ? req.body.image_base64 : req.body.imageUrl;
+        const photos = Array.isArray(req.body.evidence_photos) ? req.body.evidence_photos : (legacyImage ? [{ image_base64: legacyImage, detections: [] }] : []);
 
         if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
             !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
@@ -113,6 +116,36 @@ router.post("/", async (req, res) => {
             transformation: [{ quality: "auto:good", fetch_format: "auto" }]
         });
 
+        if (!photos.length || photos.length > 5) {
+            return res.status(400).json({ success: false, message: "Add between 1 and 5 evidence photos." });
+        }
+        const imagePattern = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+        for (const photo of photos) {
+            if (!photo || typeof photo.image_base64 !== "string" || !imagePattern.test(photo.image_base64) || photo.image_base64.length > 5 * 1024 * 1024) {
+                return res.status(400).json({ success: false, message: "Each evidence photo must be a valid image no larger than 3.7 MB." });
+            }
+            if (photo.detections !== undefined && (!Array.isArray(photo.detections) || photo.detections.length > 100)) {
+                return res.status(400).json({ success: false, message: "Each photo can contain at most 100 AI detections." });
+            }
+        }
+
+        const cloudinary = configureCloudinary();
+        const evidencePhotos = [];
+        for (const photo of photos) {
+            const uploaded = await cloudinary.uploader.upload(photo.image_base64, {
+                folder: "roadguard-ai/reports",
+                resource_type: "image",
+                allowed_formats: ["jpg", "jpeg", "png", "webp"],
+                transformation: [{ quality: "auto:good", fetch_format: "auto" }]
+            });
+            const detections = (photo.detections || []).map(d => ({
+                label: String(d.label || "Road damage").trim().slice(0, 80),
+                confidence: Number.isFinite(Number(d.confidence)) ? Math.max(0, Math.min(1, Number(d.confidence))) : undefined
+            }));
+            evidencePhotos.push({ imageUrl: uploaded.secure_url, detections });
+        }
+        const damageCount = evidencePhotos.reduce((n, p) => n + p.detections.length, 0);
+
         const report = await Report.create({
             submittedBy: null,
             contributorName,
@@ -124,7 +157,9 @@ router.post("/", async (req, res) => {
             damageType,
             severity,
             description,
-            imageUrl: uploadedImage.secure_url,
+            imageUrl: evidencePhotos[0].imageUrl,
+            evidencePhotos,
+            damageCount,
             status: "pending"
         });
         return res.status(201).json({ success: true, message: "Report submitted for admin review.", data: present(report) });
