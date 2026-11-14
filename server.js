@@ -1,103 +1,65 @@
-const express = require('express');
-const cors = require('cors');
+require("dotenv").config();
+
+const path = require("path");
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const connectDB = require("./backend/src/config/db");
+
+const authRoutes = require("./backend/src/routes/auth");
+const reportRoutes = require("./backend/src/routes/reports");
+
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
 
-app.use(cors());
-app.use(express.json({ limit: '15mb' }));
-app.use(express.static(__dirname));
+app.disable("x-powered-by");
+// Render runs behind a trusted reverse proxy; this also fixes rate-limit client IP detection.
+app.set("trust proxy", 1);
+app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" }, contentSecurityPolicy: false }));
+app.use(cors({
+    origin: process.env.CLIENT_ORIGIN ? process.env.CLIENT_ORIGIN.split(",").map(value => value.trim()) : true,
+    methods: ["GET", "POST", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"]
+}));
+app.use(express.json({ limit: "6mb" }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
-let reports = [];
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 30,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { success: false, message: "Too many authentication attempts. Please try again later." }
+});
 
-// Helper to calculate distance in meters between two lat/lng points
-function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
-    const R = 6371000; // Radius of earth in meters
-    const dLat = (lat2 - lat1) * (Math.PI / 180);
-    const dLon = (lon2 - lon1) * (Math.PI / 180);
-    const a =
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
-        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+app.get("/api/health", (req, res) => res.json({ success: true, service: "RoadGuard AI API" }));
+app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/reports", reportRoutes);
+app.use((req, res, next) => {
+    if (/^\/(backend|node_modules|\.git|\.env)(\/|$)/i.test(req.path)) {
+        return res.status(404).json({ success: false, message: "Not found." });
+    }
+    return next();
+});
+app.use(express.static(path.join(__dirname), { dotfiles: "deny", index: "index.html" }));
+
+app.use((req, res) => res.status(404).json({ success: false, message: "Route not found." }));
+app.use((error, req, res, next) => {
+    console.error("Unhandled server error:", error);
+    if (res.headersSent) return next(error);
+    return res.status(500).json({ success: false, message: "Internal server error." });
+});
+
+async function start() {
+    try {
+        await connectDB();
+        app.listen(PORT, () => console.log(`RoadGuard AI server listening on port ${PORT}`));
+    } catch (error) {
+        console.error("Server startup failed:", error.message);
+        process.exit(1);
+    }
 }
 
-// 1. Get all reports for the Admin panel review
-app.get('/api/reports', (req, res) => {
-    res.json(reports);
-});
-
-// 2. Get public reports for index.html (Excludes pending, shows approved/under-construction/completed read-only)
-app.get('/api/reports/public', (req, res) => {
-    res.json(reports.filter(r => r.status !== 'pending'));
-});
-
-// 3. Submit Report from Edge AI Contributor (with 25m spatial deduplication)
-app.post('/api/reports', async (req, res) => {
-    const { contributor_name, contributor_phone, latitude, longitude, severity, damage_type, image_base64 } = req.body;
-    
-    if (!latitude || !longitude || !image_base64) {
-        return res.status(400).json({ success: false, error: 'Missing GPS coordinates or image payload.' });
-    }
-
-    const lat = parseFloat(latitude);
-    const lon = parseFloat(longitude);
-
-    // Prevent overwriting / duplicate spamming if reported within 25 meters
-    const duplicate = reports.find(r => 
-        r.status !== 'completed' &&
-        getDistanceFromLatLonInMeters(r.latitude, r.longitude, lat, lon) < 25
-    );
-
-    if (duplicate) {
-        return res.json({ 
-            success: false, 
-            duplicate: true, 
-            message: 'Duplicate report ignored: A road issue was already reported nearby.' 
-        });
-    }
-
-    // Reverse geocode location name using OpenStreetMap Nominatim
-    let locationName = 'Unknown Road / Area';
-    try {
-        const fetch = (await import('node-fetch')).default;
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
-        const geoData = await geoRes.json();
-        if (geoData && geoData.display_name) {
-            locationName = geoData.display_name;
-        }
-    } catch (e) {
-        console.log('Reverse geocode fallback used');
-    }
-
-    const newReport = {
-        id: 'rep_' + Date.now(),
-        contributor_name: contributor_name || 'Anonymous',
-        contributor_phone: contributor_phone || 'N/A',
-        latitude: lat,
-        longitude: lon,
-        location_name: locationName,
-        severity: severity || 'Medium',
-        damage_type: damage_type || 'Road Damage',
-        image_base64,
-        status: 'pending', // pending, under-construction, completed
-        timestamp: new Date().toISOString()
-    };
-
-    reports.unshift(newReport);
-    res.json({ success: true, message: 'Report successfully submitted to Admin queue!' });
-});
-
-// 4. Admin Update Report Status (Pending, Under Construction, Completed)
-app.patch('/api/reports/:id', (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body;
-    const report = reports.find(r => r.id === id);
-
-    if (!report) return res.status(404).json({ error: 'Report not found' });
-    if (status) report.status = status;
-
-    res.json({ success: true, message: `Report status updated to ${status}` });
-});
-
-app.listen(PORT, () => console.log(`RoadGuard server running on port ${PORT}`));
+if (require.main === module) start();
+module.exports = { app, start };
