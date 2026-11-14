@@ -32,6 +32,19 @@ tbody tr:hover{background:#26364d}tbody tr:last-child td{border-bottom:0}
 .map-status{color:#94a3b8;font-size:12px;margin:10px 0 0}
 footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 @media(max-width:600px){header{align-items:flex-start}header h1{font-size:18px}main{padding:16px 3% 28px}#map{height:380px}}
+ 
+#reportDetailsDialog{width:min(900px,94vw);max-height:88vh;overflow:auto;background:#111c30;color:#e2e8f0;border:1px solid #475569;border-radius:12px;padding:20px}
+#reportDetailsDialog::backdrop{background:rgba(2,6,23,.82)}
+.detail-head{display:flex;justify-content:space-between;align-items:center;gap:12px;position:sticky;top:-20px;background:#111c30;padding:8px 0 14px;z-index:2}
+.detail-close{background:#334155;color:#fff;border:0;border-radius:6px;padding:9px 13px;cursor:pointer}
+.detail-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0 18px}
+.detail-meta div{background:#1e293b;border:1px solid #334155;border-radius:7px;padding:10px}
+.detail-meta small{display:block;color:#94a3b8;margin-bottom:5px}
+.evidence-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.evidence-card{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:10px;min-width:0}
+.evidence-card img{width:100%;height:auto;max-height:360px;object-fit:contain;background:#020617;border-radius:6px}
+.detection-list{padding-left:20px;margin:10px 0 0;color:#cbd5e1;font-size:13px}
+.detail-action{background:#2563eb;color:#fff;border:0;border-radius:5px;padding:7px 10px;cursor:pointer;font-weight:bold}
 </style>
 </head>
 <body>
@@ -50,12 +63,13 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Photo</th><th>Damage type</th><th>Severity</th><th>Location</th><th>District</th><th>Reported on</th><th>Progress status</th></tr></thead>
+        <thead><tr><th>Photo</th><th>Damage type</th><th>Severity</th><th>Location</th><th>District</th><th>Reported on</th><th>Progress status</th><th>Details</th></tr></thead>
         <tbody id="reportTable"><tr><td colspan="7" class="empty">Loading public reports…</td></tr></tbody>
       </table>
     </div>
     <p class="status-note">Report progress is read-only on this public page. Only authorised administrators can change a report's status.</p>
   </section>
+  <dialog id="reportDetailsDialog" aria-labelledby="detailTitle"><div class="detail-head"><h2 id="detailTitle">Report details</h2><button class="detail-close" type="button" id="closeDetails">Close</button></div><div id="reportDetailsContent"><p class="sub">Loading report details…</p></div></dialog>
   <section aria-labelledby="mapHeading">
     <div class="section-title"><div><h2 id="mapHeading">RoadGuard Live Progress Map</h2><p class="sub">Map markers show publicly visible reports.</p></div></div>
     <div class="search-bar">
@@ -124,7 +138,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   function render(reports){
     table.replaceChildren();markers.clearLayers();reportMarkers.clear();
     reportCount.textContent=reports.length+" public report(s)";
-    if(!reports.length){const tr=document.createElement("tr"),td=cell(tr,"No public reports are available yet.");td.colSpan=7;td.className="empty";table.appendChild(tr);return;}
+    if(!reports.length){const tr=document.createElement("tr"),td=cell(tr,"No public reports are available yet.");td.colSpan=8;td.className="empty";table.appendChild(tr);return;}
     reports.forEach(r=>{
       const tr=document.createElement("tr");
       const reportKey=String(r._id||r.id||r.timestamp||String(r.latitude)+","+String(r.longitude));
@@ -164,6 +178,11 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       const status=String(r.status||"unknown").toLowerCase();
       const badge=document.createElement("span");badge.className="pill status-"+status;badge.textContent=status.replaceAll("-"," ");
       statusCell.appendChild(badge);tr.appendChild(statusCell);
+      const detailsCell=document.createElement("td");
+      const detailsButton=document.createElement("button");
+      detailsButton.type="button";detailsButton.className="detail-action";detailsButton.textContent="View details";
+      detailsButton.addEventListener("click",()=>openReportDetails(reportKey));
+      detailsCell.appendChild(detailsButton);tr.appendChild(detailsCell);
       table.appendChild(tr);
       if(Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180){
         const severity=String(r.severity||"").toLowerCase().trim();
@@ -228,6 +247,47 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
     })();
     districtPending.set(key,lookup);
     return lookup;
+  }
+
+
+  const detailsDialog=document.getElementById("reportDetailsDialog");
+  document.getElementById("closeDetails").addEventListener("click",()=>detailsDialog.close());
+  async function openReportDetails(id){
+    const content=document.getElementById("reportDetailsContent");
+    document.getElementById("detailTitle").textContent="Report details";
+    content.replaceChildren();const loading=document.createElement("p");loading.className="sub";loading.textContent="Loading report details…";content.appendChild(loading);
+    detailsDialog.showModal();
+    try{
+      const response=await fetch("/api/reports/public/"+encodeURIComponent(id),{headers:{Accept:"application/json"}});
+      const data=await response.json();
+      if(!response.ok||!data.success)throw new Error(data.message||"Unable to load report details.");
+      const r=data.data;
+      document.getElementById("detailTitle").textContent="Road report · "+(r.location_name||"Location not provided");
+      content.replaceChildren();
+      const meta=document.createElement("div");meta.className="detail-meta";
+      const items=[["Damage types",r.damage_type],["Severity",r.severity],["Status",String(r.status||"").replaceAll("-"," ")],["District",r.district||"Not available"],["Reported",r.timestamp?new Date(r.timestamp).toLocaleString():"—"],["Evidence photos",String((r.evidence_photos||[]).length)],["Total AI detections",String(r.damage_count||0)],["Coordinates",Number(r.latitude).toFixed(6)+", "+Number(r.longitude).toFixed(6)]];
+      items.forEach(([label,value])=>{const box=document.createElement("div"),small=document.createElement("small"),strong=document.createElement("strong");small.textContent=label;strong.textContent=value||"—";box.append(small,strong);meta.appendChild(box);});
+      content.appendChild(meta);
+      const desc=document.createElement("p");desc.textContent=r.description||"No additional description.";content.appendChild(desc);
+      const heading=document.createElement("h3");heading.textContent="Evidence photos and AI detections";content.appendChild(heading);
+      const grid=document.createElement("div");grid.className="evidence-grid";
+      (r.evidence_photos||[]).forEach((photo,index)=>{
+        const card=document.createElement("article");card.className="evidence-card";
+        const title=document.createElement("h4");title.textContent="Evidence photo "+(index+1);card.appendChild(title);
+        const img=document.createElement("img");img.src=photo.image_url;img.alt="Road damage evidence photo "+(index+1);img.loading="lazy";card.appendChild(img);
+        const list=document.createElement("ul");list.className="detection-list";
+        (photo.detections||[]).forEach((d,i)=>{
+          const li=document.createElement("li");
+          const confidence=Number.isFinite(Number(d.confidence))?" · "+Math.round(Number(d.confidence)*100)+"% confidence":"";
+          li.textContent=(d.label||"Road damage")+confidence;
+          if(d.boundingBox){const b=d.boundingBox;li.textContent+=" · box "+[b.x,b.y,b.width,b.height].map(v=>Math.round(Number(v)*100)+"%").join(", ");}
+          list.appendChild(li);
+        });
+        if(!(photo.detections||[]).length){const li=document.createElement("li");li.textContent="No AI detection metadata saved for this photo.";list.appendChild(li);}
+        card.appendChild(list);grid.appendChild(card);
+      });
+      content.appendChild(grid);
+    }catch(error){content.replaceChildren();const p=document.createElement("p");p.textContent=error.message;content.appendChild(p);}
   }
 
   async function loadReports(){
