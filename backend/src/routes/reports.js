@@ -32,10 +32,28 @@ function present(report) {
 // Public map: only reports approved for public viewing.
 router.get("/public", async (req, res) => {
     try {
-        const reports = await Report.find({ status: { $in: ["approved", "under-construction", "resolved"] } })
+        // Keep the public map response small: latest 100 visible reports only.
+        // Exclude contributor details and fields not used by the public page.
+        const reports = await Report.find({
+            status: { $in: ["approved", "under-construction", "resolved"] }
+        })
+            .select("_id damageType severity status location imageUrl createdAt")
             .sort({ createdAt: -1 })
-            .select("-submittedBy");
-        return res.json(reports.map(present));
+            .limit(100)
+            .lean();
+
+        res.set("Cache-Control", "public, max-age=15, stale-while-revalidate=45");
+        return res.json(reports.map(r => ({
+            id: r._id,
+            damage_type: r.damageType,
+            severity: r.severity,
+            status: r.status,
+            latitude: r.location.coordinates[1],
+            longitude: r.location.coordinates[0],
+            location_name: `${r.location.coordinates[1]}, ${r.location.coordinates[0]}`,
+            image_url: r.imageUrl,
+            timestamp: r.createdAt
+        })));
     } catch (error) {
         console.error("Public reports error:", error);
         return res.status(500).json({ success: false, message: "Unable to load public reports." });
