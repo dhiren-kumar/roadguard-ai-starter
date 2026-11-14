@@ -144,11 +144,17 @@ button.action-btn:hover{background:#10553b}
 <body>
 
     <div id="onboardModal">
-        <h3>Contributor Access</h3>
-        <p style="font-size:0.85rem; color:#94a3b8; text-align:center;">Sign in with your verified contributor account to start scanning.</p>
-        
-        <p id="loginPrompt">Checking your sign-in status...</p><button class="action-btn" onclick="startContributorSession()">Start Edge AI Scanner</button><a href="login.html" class="back-btn" style="display:block;text-align:center;margin-top:12px;">Sign in / Create account</a>
-        <a href="index.html" class="back-btn" style="display:block; text-align:center; margin-top:15px; background:transparent; color:#94a3b8;">← Back to Map</a>
+        <h3>Contributor Details</h3>
+        <p style="font-size:0.85rem; color:#64748b; text-align:center;">Enter your details to start reporting. No account or password is needed.</p>
+        <form id="contributorForm">
+          <label for="contributorName">Full name</label><input id="contributorName" name="name" maxlength="100" required autocomplete="name" placeholder="Your full name">
+          <label for="contributorPhone">Phone number</label><input id="contributorPhone" name="phone" type="tel" maxlength="20" required autocomplete="tel" placeholder="Your contact number">
+          <label for="contributorEmail">Email (optional)</label><input id="contributorEmail" name="email" type="email" maxlength="254" autocomplete="email" placeholder="Your email address">
+          <label for="contributorLocation">Location (optional)</label><input id="contributorLocation" name="location" maxlength="200" placeholder="Area / city">
+          <button class="action-btn" type="submit">Continue to Road Scanner</button>
+        </form>
+        <p id="loginPrompt" role="status"></p>
+        <a href="index.html" class="back-btn" style="display:block;text-align:center;margin-top:15px;background:transparent;color:#64748b;">← Back to Map</a>
     </div>
 
     <div id="scannerContainer">
@@ -178,8 +184,6 @@ button.action-btn:hover{background:#10553b}
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <script>
         let contributor = null;
-        const authToken = sessionStorage.getItem("roadguard_token");
-        const signedInUser = JSON.parse(sessionStorage.getItem("roadguard_user") || "null");
         const video = document.getElementById('cam');
         const canvas = document.getElementById('canvas');
         const log = document.getElementById('logBox');
@@ -193,40 +197,31 @@ button.action-btn:hover{background:#10553b}
 
         const BACKEND_URL = '/api/reports';
 
-        async function startContributorSession() {
-            if (!authToken || !signedInUser) {
-                window.location.href = 'login.html';
-                return;
-            }
-            try {
-                const response = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${authToken}` } });
-                const data = await response.json();
-                if (!response.ok || !data.user || data.user.role !== 'contributor') {
-                    sessionStorage.clear();
-                    window.location.href = 'login.html';
-                    return;
-                }
-                contributor = data.user;
-                document.getElementById('onboardModal').style.display = 'none';
-                document.getElementById('scannerContainer').style.display = 'flex';
-                document.getElementById('welcomeHeader').innerText = `Welcome, ${contributor.name}`;
-                document.getElementById('userMeta').innerText = contributor.email;
-                updateLocalStorageCount();
-                initGPS();
-                initCameraAndModel();
-            } catch (error) {
-                document.getElementById('loginPrompt').innerText = 'Could not verify your session. Please sign in again.';
-            }
+        function startContributorSession() {
+            const form = document.getElementById('contributorForm');
+            if (!form.reportValidity()) return;
+            contributor = {
+                name: document.getElementById('contributorName').value.trim(),
+                phone: document.getElementById('contributorPhone').value.trim(),
+                email: document.getElementById('contributorEmail').value.trim(),
+                locationText: document.getElementById('contributorLocation').value.trim()
+            };
+            if (!contributor.name || !contributor.phone) return;
+            document.getElementById('onboardModal').style.display = 'none';
+            document.getElementById('scannerContainer').style.display = 'flex';
+            document.getElementById('welcomeHeader').innerText = `Welcome, ${contributor.name}`;
+            document.getElementById('userMeta').innerText = contributor.phone;
+            updateLocalStorageCount();
+            initGPS();
+            initCameraAndModel();
         }
 
-        window.onload = () => {
-            if (!authToken || !signedInUser || signedInUser.role !== 'contributor') {
-                document.getElementById('loginPrompt').innerText = 'Please sign in with a verified contributor account.';
-            } else {
-                document.getElementById('loginPrompt').innerText = `Signed in as ${signedInUser.email}`;
-            }
-            updateLocalStorageCount();
-        };
+        document.getElementById('contributorForm').addEventListener('submit', event => {
+            event.preventDefault();
+            startContributorSession();
+        });
+
+        window.onload = () => updateLocalStorageCount();
 
         function initGPS() {
             if (navigator.geolocation) {
@@ -369,8 +364,10 @@ button.action-btn:hover{background:#10553b}
             const imageBase64 = canvas.toDataURL('image/jpeg', 0.6);
 
             const newReport = {
-                contributor_name: contributor ? contributor.name : 'Anonymous',
-                contributor_phone: contributor ? contributor.phone : '0000000000',
+                contributor_name: contributor ? contributor.name : '',
+                contributor_phone: contributor ? contributor.phone : '',
+                contributor_email: contributor ? contributor.email : '',
+                contributor_location: contributor ? contributor.locationText : '',
                 latitude: latitude,
                 longitude: longitude,
                 severity: severity,
@@ -407,10 +404,12 @@ button.action-btn:hover{background:#10553b}
                 try {
                     const response = await fetch(BACKEND_URL, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${authToken}` },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             contributor_name: report.contributor_name,
                             contributor_phone: report.contributor_phone,
+                            contributor_email: report.contributor_email,
+                            contributor_location: report.contributor_location,
                             latitude: report.latitude,
                             longitude: report.longitude,
                             severity: report.severity,
