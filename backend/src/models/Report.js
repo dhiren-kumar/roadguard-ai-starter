@@ -65,6 +65,30 @@ const reportSchema = new mongoose.Schema(
         }],
         damageCount: { type: Number, min: 0, default: 0 },
 
+        maintenanceAssignment: {
+            staffName: { type: String, trim: true, maxlength: 100, default: "" },
+            department: { type: String, trim: true, maxlength: 120, default: "" }
+        },
+        repairPriority: { type: String, enum: ["low", "medium", "high", "urgent"], default: "medium" },
+        targetCompletionDate: { type: Date, default: null },
+        maintenanceNotes: [{
+            note: { type: String, required: true, trim: true, maxlength: 1000 },
+            author: { type: String, trim: true, maxlength: 100, default: "Admin" },
+            createdAt: { type: Date, default: Date.now }
+        }],
+        repairPhotos: [{
+            imageUrl: { type: String, required: true },
+            caption: { type: String, trim: true, maxlength: 120, default: "" },
+            uploadedAt: { type: Date, default: Date.now }
+        }],
+        repairHistory: [{
+            fromStatus: { type: String, trim: true, default: "" },
+            toStatus: { type: String, trim: true, default: "" },
+            note: { type: String, trim: true, maxlength: 500, default: "" },
+            changedBy: { type: String, trim: true, maxlength: 100, default: "Admin" },
+            changedAt: { type: Date, default: Date.now }
+        }],
+
         status: {
             type: String,
             enum: [
