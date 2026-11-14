@@ -1,199 +1,149 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#ffffff">
-  <meta name="description" content="RoadGuard AI helps communities identify, report and track road damage using edge AI.">
-  <title>RoadGuard AI | Safer Roads, Smarter Reports</title>
-  <link rel="preconnect" href="https://unpkg.com">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <link rel="stylesheet" href="css/style.css">
-  <style>
-    .hero{min-height:500px}.hero-card{min-width:0}.map-wrap{position:relative}
-    .map-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
-    .map-toolbar input{max-width:360px}.map-toolbar button{white-space:nowrap}
-    .report-card img{width:100%;height:150px;object-fit:cover;border-radius:8px}
-    .empty-state{padding:24px;border:1px dashed #cbd8ce;border-radius:12px;color:#68776e;text-align:center;background:#fff}
-    .api-state{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:#607268}
-    .api-state i{width:8px;height:8px;border-radius:50%;background:#d99b36}
-    .api-state.ok i{background:#278b55}
-    .map-note{font-size:12px;color:#738178;margin-top:10px}
-    @media(max-width:600px){.hero{min-height:0}.map-toolbar input{max-width:none;flex:1}.hero-actions{flex-wrap:wrap}}
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="RoadGuard AI public road condition reports and progress map.">
+<meta name="theme-color" content="#0f172a">
+<title>RoadGuard AI - Public Road Condition & Progress Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+*{box-sizing:border-box}body{font-family:Arial,sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
+header{background:#1e293b;padding:18px 4%;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #334155;gap:16px;flex-wrap:wrap}
+header h1{margin:0;font-size:21px;color:#38bdf8}.nav-links{display:flex;gap:10px;flex-wrap:wrap}
+.nav-links a,.search-bar button{background:#2563eb;color:#fff;padding:10px 15px;border-radius:5px;text-decoration:none;font-size:14px;font-weight:bold;border:0;cursor:pointer}
+.nav-links a:first-child{background:#16a34a}.nav-links a:hover,.search-bar button:hover{filter:brightness(1.12)}
+main{max-width:1400px;margin:auto;padding:22px 4% 40px}.section-title{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap;margin:8px 0 16px}
+h2{font-size:21px;margin:0;color:#f8fafc}.sub{color:#94a3b8;font-size:13px;margin:7px 0 0}
+.table-wrap{overflow-x:auto;background:#1e293b;border:1px solid #334155;border-radius:8px}
+table{width:100%;border-collapse:collapse;min-width:850px;text-align:left;font-size:13px}
+th{background:#111c30;color:#7dd3fc;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+th,td{padding:13px 14px;border-bottom:1px solid #334155;vertical-align:middle}
+tbody tr:hover{background:#26364d}tbody tr:last-child td{border-bottom:0}
+.report-img{width:76px;height:56px;object-fit:cover;border-radius:5px;border:1px solid #475569}
+.pill{display:inline-block;padding:5px 9px;border-radius:20px;font-size:11px;font-weight:bold;text-transform:capitalize;white-space:nowrap}
+.status-pending{background:#78350f;color:#fde68a}.status-approved{background:#1e40af;color:#bfdbfe}.status-under-construction{background:#9a3412;color:#fed7aa}.status-resolved{background:#14532d;color:#bbf7d0}.status-rejected{background:#7f1d1d;color:#fecaca}
+.severity-high{color:#fca5a5}.severity-medium{color:#fcd34d}.severity-low{color:#86efac}
+.empty{text-align:center;padding:28px;color:#94a3b8}.status-note{color:#94a3b8;font-size:12px;margin:12px 0 26px}
+.search-bar{display:flex;gap:9px;flex-wrap:wrap;margin:16px 0 12px}.search-bar input{padding:10px 12px;max-width:360px;flex:1;min-width:180px;border:1px solid #475569;border-radius:5px;background:#111c30;color:#fff}
+#map{height:480px;width:100%;border:1px solid #334155;border-radius:8px;overflow:hidden}
+.legend{background:#1e293b;color:#fff;padding:10px 14px;border-radius:6px;line-height:1.9;font-size:12px;border:1px solid #475569}
+.dot{height:10px;width:10px;border-radius:50%;display:inline-block;margin-right:6px}
+.map-status{color:#94a3b8;font-size:12px;margin:10px 0 0}
+footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+@media(max-width:600px){header{align-items:flex-start}header h1{font-size:18px}main{padding:16px 3% 28px}#map{height:380px}}
+</style>
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="index.html"><span class="brand-mark">RG</span> RoadGuard <b>AI</b></a>
-    <nav aria-label="Main navigation">
-      <a href="#how-it-works">How it works</a>
-      <a href="#live-map">Live map</a>
-      <a href="login.html">Sign in</a>
-      <a class="btn" href="login.html">Report road damage</a>
-    </nav>
-  </header>
+<header>
+  <h1>RoadGuard AI · Live Road Progress</h1>
+  <nav class="nav-links" aria-label="Main navigation">
+    <a href="dashboard.html">Contribute / Scan Road</a>
+    <a href="login.html">Admin Portal</a>
+  </nav>
+</header>
+<main>
+  <section aria-labelledby="reportsHeading">
+    <div class="section-title">
+      <div><h2 id="reportsHeading">Public Road Damage Reports</h2><p class="sub">Verified reports and their latest progress updates.</p></div>
+      <span class="sub" id="reportCount" role="status">Loading reports…</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Photo</th><th>Damage type</th><th>Severity</th><th>Location</th><th>Reported on</th><th>Progress status</th></tr></thead>
+        <tbody id="reportTable"><tr><td colspan="6" class="empty">Loading public reports…</td></tr></tbody>
+      </table>
+    </div>
+    <p class="status-note">Report progress is read-only on this public page. Only authorised administrators can change a report's status.</p>
+  </section>
+  <section aria-labelledby="mapHeading">
+    <div class="section-title"><div><h2 id="mapHeading">RoadGuard Live Progress Map</h2><p class="sub">Map markers show publicly visible reports.</p></div></div>
+    <div class="search-bar">
+      <input type="search" id="searchInput" placeholder="Search city or area (e.g. Bhubaneswar)" aria-label="Search city or area">
+      <button type="button" id="searchButton">Search location</button>
+      <button type="button" id="resetButton">Show Odisha</button>
+    </div>
+    <div id="map" aria-label="Public road damage report map"></div>
+    <p class="map-status" id="mapStatus" role="status">Loading map reports…</p>
+  </section>
+</main>
+<footer><span>© <span id="year"></span> RoadGuard AI</span><span>Public report status is managed by authorised administrators.</span></footer>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(() => {
+  "use strict";
+  const table=document.getElementById("reportTable");
+  const reportCount=document.getElementById("reportCount");
+  const mapStatus=document.getElementById("mapStatus");
+  const map=L.map("map",{scrollWheelZoom:false}).setView([20.2961,85.8245],7);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
+  const markers=L.layerGroup().addTo(map);
+  const legend=L.control({position:"bottomright"});
+  legend.onAdd=()=>{const el=L.DomUtil.create("div","legend");el.innerHTML='<b>Report progress</b><br><span class="dot" style="background:#3b82f6"></span>Approved<br><span class="dot" style="background:#f97316"></span>Under construction<br><span class="dot" style="background:#22c55e"></span>Resolved';return el;};
+  legend.addTo(map);
+  document.getElementById("year").textContent=new Date().getFullYear();
 
-  <main>
-    <section class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">COMMUNITY-POWERED ROAD SAFETY</p>
-        <h1>Safer roads start with <span>better information.</span></h1>
-        <p>RoadGuard AI helps identify road damage, submit verified reports and follow repair progress — bringing communities and road authorities closer together.</p>
-        <div class="hero-actions">
-          <a class="btn" href="login.html">Contribute a report</a>
-          <a class="text-link" href="#live-map">Explore the public map →</a>
-        </div>
-        <p class="api-state" id="apiState" role="status"><i></i><span>Checking service status…</span></p>
-      </div>
-      <div class="hero-card" aria-label="Illustration of road reports on a map">
-        <div class="mini-map"><div class="map-road"></div><span class="pin pin-one">!</span><span class="pin pin-two">!</span><span class="map-label">ROAD CONDITION OVERVIEW</span></div>
-        <div class="stats">
-          <div><strong>AI</strong><small>On-device scanning</small></div>
-          <div><strong>GPS</strong><small>Location-based reports</small></div>
-          <div><strong>Live</strong><small>Progress tracking</small></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section" id="how-it-works">
-      <div class="section-heading"><div><p class="eyebrow">A SIMPLE PROCESS</p><h2>From detection to resolution</h2></div><span class="tag">Built for communities</span></div>
-      <div class="two-col">
-        <article class="panel"><h3>01 · Detect and report</h3><p class="muted">Contributors can use the browser-based edge scanner to capture road damage, location and supporting images.</p></article>
-        <article class="panel"><h3>02 · Review and track</h3><p class="muted">Reports are submitted for administrator review. Approved reports appear on the public map as their status changes.</p></article>
-      </div>
-    </section>
-
-    <section class="section" id="live-map">
-      <div class="section-heading"><div><p class="eyebrow">PUBLIC INFORMATION</p><h2>Road condition map</h2><p class="muted">Only reports approved for public viewing are displayed here.</p></div></div>
-      <div class="map-toolbar">
-        <input id="searchInput" type="search" placeholder="Search a city or area" aria-label="Search a city or area">
-        <button class="btn" id="searchButton" type="button">Search location</button>
-        <button class="btn btn-outline" id="resetMap" type="button">Show Odisha</button>
-      </div>
-      <div class="legend"><span><i class="high"></i>High severity</span><span><i class="medium"></i>Medium severity</span><span><i class="low"></i>Low severity / resolved</span></div>
-      <div id="map" role="application" aria-label="Map showing public road damage reports"></div>
-      <p class="map-note" id="mapMessage" role="status">Loading public road reports…</p>
-      <div class="section-heading" style="margin-top:36px"><div><p class="eyebrow">LATEST UPDATES</p><h2>Recent public reports</h2></div><a class="text-link" href="login.html">Submit a report →</a></div>
-      <div class="report-grid" id="reportsGrid"><div class="empty-state">Loading reports…</div></div>
-    </section>
-  </main>
-
-  <footer><span>© <span id="year"></span> RoadGuard AI</span><span>Safer roads through shared information.</span></footer>
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script>
-    (() => {
-      "use strict";
-      const map = L.map("map", { scrollWheelZoom: false }).setView([20.2961, 85.8245], 8);
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      }).addTo(map);
-      const markers = L.layerGroup().addTo(map);
-      const grid = document.getElementById("reportsGrid");
-      const mapMessage = document.getElementById("mapMessage");
-      const apiState = document.getElementById("apiState");
-      document.getElementById("year").textContent = new Date().getFullYear();
-
-      function textNode(tag, value, className) {
-        const node = document.createElement(tag);
-        node.textContent = value == null ? "" : String(value);
-        if (className) node.className = className;
-        return node;
+  function cell(row,value){const td=document.createElement("td");td.textContent=value==null||value===""?"—":String(value);row.appendChild(td);return td;}
+  function render(reports){
+    table.replaceChildren();markers.clearLayers();
+    reportCount.textContent=reports.length+" public report(s)";
+    if(!reports.length){const tr=document.createElement("tr"),td=cell(tr,"No public reports are available yet.");td.colSpan=6;td.className="empty";table.appendChild(tr);return;}
+    reports.forEach(r=>{
+      const tr=document.createElement("tr");
+      const photo=document.createElement("td");
+      if(typeof r.image_base64==="string" && /^data:image\/(jpeg|jpg|png|webp);base64,/.test(r.image_base64)){
+        const img=document.createElement("img");img.className="report-img";img.src=r.image_base64;img.alt="Road damage report";img.loading="lazy";photo.appendChild(img);
+      }else photo.textContent="No photo";
+      tr.appendChild(photo);
+      cell(tr,r.damage_type||"Road damage");
+      const sev=cell(tr,r.severity||"Unspecified");sev.className="severity-"+String(r.severity||"").toLowerCase();
+      cell(tr,r.location_name||"Location unavailable");
+      cell(tr,r.timestamp?new Date(r.timestamp).toLocaleString():"—");
+      const statusCell=document.createElement("td");
+      const status=String(r.status||"unknown").toLowerCase();
+      const badge=document.createElement("span");badge.className="pill status-"+status;badge.textContent=status.replaceAll("-"," ");
+      statusCell.appendChild(badge);tr.appendChild(statusCell);
+      table.appendChild(tr);
+      const lat=Number(r.latitude),lng=Number(r.longitude);
+      if(Number.isFinite(lat)&&Number.isFinite(lng)&&Math.abs(lat)<=90&&Math.abs(lng)<=180){
+        const color=status==="resolved"?"#22c55e":status==="under-construction"?"#f97316":"#3b82f6";
+        const marker=L.circleMarker([lat,lng],{radius:9,fillColor:color,color:"#0f172a",weight:1,fillOpacity:.9}).addTo(markers);
+        const popup=document.createElement("div");
+        const title=document.createElement("strong");title.textContent=r.damage_type||"Road damage";popup.appendChild(title);
+        const line=document.createElement("p");line.textContent="Status: "+status.replaceAll("-"," ");popup.appendChild(line);
+        const loc=document.createElement("small");loc.textContent=r.location_name||"Location unavailable";popup.appendChild(loc);
+        marker.bindPopup(popup);
       }
-      function severityClass(value) {
-        const v = String(value || "").toLowerCase();
-        return v === "high" ? "high" : (v === "medium" ? "medium" : "low");
-      }
-      function addPopup(marker, report) {
-        const box = document.createElement("div");
-        box.append(textNode("strong", report.damage_type || "Road damage"));
-        box.append(document.createElement("br"));
-        box.append(textNode("span", "Severity: " + (report.severity || "Not specified")));
-        box.append(document.createElement("br"));
-        box.append(textNode("span", "Status: " + (report.status || "Unknown")));
-        box.append(document.createElement("br"));
-        box.append(textNode("small", report.location_name || "Location unavailable"));
-        marker.bindPopup(box);
-      }
-      function renderReports(reports) {
-        markers.clearLayers();
-        grid.replaceChildren();
-        if (!reports.length) {
-          grid.append(textNode("div", "No public reports are available yet. Approved reports will appear here.", "empty-state"));
-          return;
-        }
-        reports.slice(0, 9).forEach(report => {
-          const lat = Number(report.latitude), lng = Number(report.longitude);
-          if (Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180) {
-            const level = severityClass(report.severity);
-            const color = level === "high" ? "#d85b4d" : level === "medium" ? "#e99a36" : "#3b9b69";
-            const marker = L.circleMarker([lat, lng], { radius: 8, color, fillColor: color, fillOpacity: .85, weight: 1 }).addTo(markers);
-            addPopup(marker, report);
-          }
-          const card = document.createElement("article");
-          card.className = "report-card";
-          const title = textNode("h3", report.damage_type || "Road damage");
-          const badge = textNode("span", report.severity || "Unspecified", "severity-pill " + severityClass(report.severity));
-          const location = textNode("p", report.location_name || "Location not supplied");
-          const status = textNode("p", "Status: " + (report.status || "Unknown"));
-          const date = textNode("p", report.timestamp ? new Date(report.timestamp).toLocaleString() : "");
-          card.append(title, badge, location, status, date);
-          if (typeof report.image_base64 === "string" && /^data:image\/(jpeg|jpg|png|webp);base64,/.test(report.image_base64)) {
-            const image = document.createElement("img");
-            image.src = report.image_base64;
-            image.alt = "Submitted road condition";
-            image.loading = "lazy";
-            card.append(image);
-          }
-          grid.append(card);
-        });
-      }
-      async function loadReports() {
-        try {
-          const [healthResponse, reportsResponse] = await Promise.all([
-            fetch("/api/health", { headers: { Accept: "application/json" } }),
-            fetch("/api/reports/public", { headers: { Accept: "application/json" } })
-          ]);
-          if (!healthResponse.ok || !reportsResponse.ok) throw new Error("The service is temporarily unavailable.");
-          const health = await healthResponse.json();
-          const reports = await reportsResponse.json();
-          if (!Array.isArray(reports)) throw new Error("The reports service returned an unexpected response.");
-          apiState.classList.add("ok");
-          apiState.querySelector("span").textContent = health.service || "Service online";
-          mapMessage.textContent = reports.length + " public report(s) loaded.";
-          renderReports(reports);
-        } catch (error) {
-          apiState.classList.remove("ok");
-          apiState.querySelector("span").textContent = "Service status unavailable";
-          mapMessage.textContent = error.message;
-          grid.replaceChildren(textNode("div", "Public reports could not be loaded. Please try again later.", "empty-state"));
-        }
-      }
-      async function searchLocation() {
-        const query = document.getElementById("searchInput").value.trim();
-        if (!query) return;
-        const button = document.getElementById("searchButton");
-        button.disabled = true;
-        button.textContent = "Searching…";
-        try {
-          const response = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(query));
-          if (!response.ok) throw new Error("Location search is unavailable.");
-          const places = await response.json();
-          if (!places.length) throw new Error("Location not found. Try another search.");
-          map.setView([Number(places[0].lat), Number(places[0].lon)], 13);
-        } catch (error) {
-          mapMessage.textContent = error.message;
-        } finally {
-          button.disabled = false;
-          button.textContent = "Search location";
-        }
-      }
-      document.getElementById("searchButton").addEventListener("click", searchLocation);
-      document.getElementById("searchInput").addEventListener("keydown", event => { if (event.key === "Enter") searchLocation(); });
-      document.getElementById("resetMap").addEventListener("click", () => map.setView([20.2961, 85.8245], 8));
-      loadReports();
-      window.setInterval(loadReports, 60000);
-    })();
-  </script>
+    });
+  }
+  async function loadReports(){
+    try{
+      const response=await fetch("/api/reports/public",{headers:{Accept:"application/json"}});
+      if(!response.ok)throw new Error("Could not load public reports (HTTP "+response.status+").");
+      const reports=await response.json();
+      if(!Array.isArray(reports))throw new Error("Unexpected reports response.");
+      render(reports);mapStatus.textContent="Map updated. "+reports.length+" public report(s) shown.";
+    }catch(error){
+      table.replaceChildren();const tr=document.createElement("tr"),td=cell(tr,error.message);td.colSpan=6;td.className="empty";table.appendChild(tr);
+      reportCount.textContent="Reports unavailable";mapStatus.textContent=error.message;
+    }
+  }
+  async function searchLocation(){
+    const query=document.getElementById("searchInput").value.trim();if(!query)return;
+    const button=document.getElementById("searchButton");button.disabled=true;button.textContent="Searching…";
+    try{
+      const res=await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+encodeURIComponent(query));
+      if(!res.ok)throw new Error("Location search is unavailable.");
+      const results=await res.json();if(!results.length)throw new Error("Location not found.");
+      map.setView([Number(results[0].lat),Number(results[0].lon)],13);
+    }catch(error){mapStatus.textContent=error.message;}
+    finally{button.disabled=false;button.textContent="Search location";}
+  }
+  document.getElementById("searchButton").addEventListener("click",searchLocation);
+  document.getElementById("searchInput").addEventListener("keydown",e=>{if(e.key==="Enter")searchLocation();});
+  document.getElementById("resetButton").addEventListener("click",()=>map.setView([20.2961,85.8245],7));
+  loadReports();setInterval(loadReports,30000);
+})();
+</script>
 </body>
 </html>
