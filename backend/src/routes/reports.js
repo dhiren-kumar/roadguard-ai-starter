@@ -1,7 +1,7 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const Report = require("../models/Report");
-const { protect, adminOnly, contributorOnly } = require("../middleware/auth");
+const { protect, adminOnly } = require("../middleware/auth");
 
 const router = express.Router();
 const STATUSES = ["pending", "approved", "under-construction", "resolved", "rejected"];
@@ -19,7 +19,10 @@ function present(report) {
         longitude: r.location.coordinates[0],
         location_name: `${r.location.coordinates[1]}, ${r.location.coordinates[0]}`,
         image_base64: r.imageUrl,
-        contributor_name: r.submittedBy && r.submittedBy.name ? r.submittedBy.name : "Contributor",
+        contributor_name: r.contributorName || (r.submittedBy && r.submittedBy.name) || "Contributor",
+        contributor_phone: r.contributorPhone || "",
+        contributor_email: r.contributorEmail || "",
+        contributor_location: r.contributorLocation || "",
         timestamp: r.createdAt
     };
 }
@@ -48,13 +51,17 @@ router.get("/", protect, adminOnly, async (req, res) => {
     }
 });
 
-// Contributor-only report submission.
-router.post("/", protect, contributorOnly, async (req, res) => {
+// Public contributor submission: collect contact details, but do not require an account.
+router.post("/", async (req, res) => {
     try {
         const latitude = Number(req.body.latitude);
         const longitude = Number(req.body.longitude);
         const severityInput = String(req.body.severity || "medium").toLowerCase();
         const severity = ({ severe: "high", "high red severity": "high", "normal damage": "low", normal: "low" })[severityInput] || severityInput;
+        const contributorName = typeof req.body.contributor_name === "string" ? req.body.contributor_name.trim().slice(0, 100) : "";
+        const contributorPhone = typeof req.body.contributor_phone === "string" ? req.body.contributor_phone.trim().slice(0, 20) : "";
+        const contributorEmail = typeof req.body.contributor_email === "string" ? req.body.contributor_email.trim().toLowerCase().slice(0, 254) : "";
+        const contributorLocation = typeof req.body.contributor_location === "string" ? req.body.contributor_location.trim().slice(0, 200) : "";
         const damageType = String(req.body.damage_type || req.body.damageType || "Road damage").trim().slice(0, 100);
         const description = String(req.body.description || damageType).trim().slice(0, 1000);
         const image = typeof req.body.image_base64 === "string" ? req.body.image_base64 : req.body.imageUrl;
@@ -62,6 +69,12 @@ router.post("/", protect, contributorOnly, async (req, res) => {
         if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
             !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
             return res.status(400).json({ success: false, message: "Valid GPS coordinates are required." });
+        }
+        if (!contributorName || !contributorPhone) {
+            return res.status(400).json({ success: false, message: "Contributor name and phone number are required." });
+        }
+        if (contributorEmail && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(contributorEmail)) {
+            return res.status(400).json({ success: false, message: "Enter a valid contributor email address." });
         }
         if (!SEVERITIES.includes(severity)) {
             return res.status(400).json({ success: false, message: "Severity must be low, medium or high." });
@@ -71,7 +84,11 @@ router.post("/", protect, contributorOnly, async (req, res) => {
         }
 
         const report = await Report.create({
-            submittedBy: req.user._id,
+            submittedBy: null,
+            contributorName,
+            contributorPhone,
+            contributorEmail,
+            contributorLocation,
             location: { type: "Point", coordinates: [longitude, latitude] },
             damageType,
             severity,
