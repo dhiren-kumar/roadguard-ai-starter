@@ -173,6 +173,12 @@ button.action-btn:hover{background:#10553b}
 
         <div class="panel">
             <div class="ai-badge" id="aiBadge">Edge AI: Loading model into device RAM...</div>
+  <div id="gpsPanel" style="background:#f2f6f2;border:1px solid #dce5de;border-radius:8px;padding:12px;margin:10px 0;color:#405449;font-size:13px">
+    <strong>Live GPS</strong>
+    <div id="gpsStatus" role="status" style="margin-top:6px">Waiting for GPS permission…</div>
+    <div id="gpsCoords" style="margin-top:4px">Coordinates: Not available</div>
+    <div id="gpsPlace" style="margin-top:4px">Nearby road/place: Looking up…</div>
+  </div>
 
             <div style="font-size:0.85rem; color:#94a3b8; margin-bottom:8px;" id="localCountInfo">Stored Local Reports: 0</div>
 
@@ -190,6 +196,11 @@ button.action-btn:hover{background:#10553b}
         const aiBadge = document.getElementById('aiBadge');
 
         let coords = { lat: null, lng: null };
+        let currentLocationName = '';
+        let gpsWatchId = null;
+        let lastGeocodeAt = 0;
+        let lastGeocodeCoords = null;
+        let geocodeInProgress = false;
         let ortSession = null;
         let isScanning = false;
         const MODEL_SIZE = 640;
@@ -223,19 +234,76 @@ button.action-btn:hover{background:#10553b}
 
         window.onload = () => updateLocalStorageCount();
 
-        function initGPS() {
-            if (navigator.geolocation) {
-                navigator.geolocation.watchPosition(
-                    pos => {
-                        coords.lat = pos.coords.latitude;
-                        coords.lng = pos.coords.longitude;
-                        if (log) log.innerText = `GPS Locked: [${coords.lat.toFixed(4)}, ${coords.lng.toFixed(4)}]`;
-                    },
-                    () => { if (log) log.innerText = 'GPS permission denied or unavailable. Reports require a valid GPS fix.'; },
-                    { enableHighAccuracy: true }
-                );
+        function distanceMeters(a, b) {
+            const rad = value => value * Math.PI / 180;
+            const dLat = rad(b.lat - a.lat), dLng = rad(b.lng - a.lng);
+            const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
+            return 6371000 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+        }
+
+        async function updateLocationName(lat, lng, force = false) {
+            const now = Date.now();
+            const point = { lat, lng };
+            if (geocodeInProgress || (!force && now - lastGeocodeAt < 10000)) return;
+            if (!force && lastGeocodeCoords && distanceMeters(lastGeocodeCoords, point) < 30) return;
+            geocodeInProgress = true;
+            lastGeocodeAt = now;
+            lastGeocodeCoords = point;
+            const placeEl = document.getElementById('gpsPlace');
+            if (placeEl) placeEl.textContent = 'Nearby road/place: Updating…';
+            try {
+                const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=' +
+                    encodeURIComponent(lat) + '&lon=' + encodeURIComponent(lng) + '&zoom=18&addressdetails=1';
+                const response = await fetch(url, { headers: { Accept: 'application/json' } });
+                if (!response.ok) throw new Error('Place lookup unavailable');
+                const data = await response.json();
+                const a = data.address || {};
+                const road = a.road || a.pedestrian || a.residential || a.footway || a.path || a.cycleway;
+                const nearby = a.neighbourhood || a.suburb || a.quarter || a.village || a.town || a.city_district || a.city || a.county;
+                currentLocationName = road ? (nearby ? road + ', ' + nearby : road) :
+                    (a.amenity || a.tourism || a.shop || a.leisure || a.building || nearby || data.name || '');
+                if (placeEl) placeEl.textContent = 'Nearby road/place: ' + (currentLocationName || 'Name unavailable for this coordinate');
+            } catch (error) {
+                if (placeEl) placeEl.textContent = 'Nearby road/place: ' + (currentLocationName || 'Could not retrieve name; GPS coordinates are saved');
+            } finally {
+                geocodeInProgress = false;
             }
         }
+
+        function initGPS() {
+            const statusEl = document.getElementById('gpsStatus');
+            const coordsEl = document.getElementById('gpsCoords');
+            if (!navigator.geolocation) {
+                if (statusEl) statusEl.textContent = 'GPS is not supported by this browser.';
+                return;
+            }
+            if (gpsWatchId !== null) navigator.geolocation.clearWatch(gpsWatchId);
+            if (statusEl) statusEl.textContent = 'Requesting location permission…';
+            gpsWatchId = navigator.geolocation.watchPosition(
+                pos => {
+                    coords.lat = pos.coords.latitude;
+                    coords.lng = pos.coords.longitude;
+                    if (statusEl) statusEl.textContent = 'Live GPS active · accuracy ±' + Math.round(pos.coords.accuracy) + ' m · updated ' + new Date(pos.timestamp).toLocaleTimeString();
+                    if (coordsEl) coordsEl.textContent = 'Coordinates: ' + coords.lat.toFixed(6) + ', ' + coords.lng.toFixed(6);
+                    updateLocationName(coords.lat, coords.lng);
+                    if (log) log.innerText = 'Live GPS locked: [' + coords.lat.toFixed(5) + ', ' + coords.lng.toFixed(5) + ']';
+                },
+                error => {
+                    if (statusEl) statusEl.textContent = error.code === 1 ? 'Location permission denied. Allow location access to attach GPS.' : 'Waiting for GPS signal. Keep location enabled and try outdoors.';
+                    if (log) log.innerText = 'GPS: ' + error.message;
+                },
+                { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+            );
+        }
+
+        function stopGPS() {
+            if (gpsWatchId !== null && navigator.geolocation) {
+                navigator.geolocation.clearWatch(gpsWatchId);
+                gpsWatchId = null;
+            }
+        }
+
+        window.addEventListener('pagehide', stopGPS);
 
         async function initCameraAndModel() {
             try {
@@ -368,6 +436,7 @@ button.action-btn:hover{background:#10553b}
                 contributor_phone: contributor ? contributor.phone : '',
                 contributor_email: contributor ? contributor.email : '',
                 contributor_location: contributor ? contributor.locationText : '',
+                location_name: currentLocationName,
                 latitude: latitude,
                 longitude: longitude,
                 severity: severity,
@@ -411,6 +480,7 @@ button.action-btn:hover{background:#10553b}
                             contributor_phone: report.contributor_phone,
                             contributor_email: report.contributor_email,
                             contributor_location: report.contributor_location,
+                            location_name: report.location_name || '',
                             latitude: report.latitude,
                             longitude: report.longitude,
                             severity: report.severity,
