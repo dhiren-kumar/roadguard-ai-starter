@@ -138,7 +138,7 @@ router.get("/me", protect, (req, res) => {
 router.get("/staff", protect, require("../middleware/auth").adminOnly, async (req, res) => {
     try {
         const staff = await User.find({ role: "staff" }).select("name email locationText isEmailVerified createdAt").sort({ name: 1 }).lean();
-        return res.json({ success: true, data: staff });
+        return res.json({ success: true, data: staff.map(person => ({ id: person._id, name: person.name, email: person.email, locationText: person.locationText })) });
     } catch (error) {
         console.error("Staff list error:", error);
         return res.status(500).json({ success: false, message: "Unable to load maintenance staff." });
