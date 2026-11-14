@@ -216,6 +216,91 @@ router.post("/", async (req, res) => {
     }
 });
 
+
+// Admin-only maintenance assignment, repair notes and evidence updates.
+router.patch("/:id/maintenance", protect, adminOnly, async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(400).json({ success: false, message: "Invalid report ID." });
+        }
+        const report = await Report.findById(req.params.id);
+        if (!report) return res.status(404).json({ success: false, message: "Report not found." });
+
+        const body = req.body || {};
+        if (body.staff_name !== undefined) {
+            if (typeof body.staff_name !== "string" || body.staff_name.trim().length > 100)
+                return res.status(400).json({ success: false, message: "Staff name must be 100 characters or fewer." });
+            report.maintenanceAssignment.staffName = body.staff_name.trim();
+        }
+        if (body.department !== undefined) {
+            if (typeof body.department !== "string" || body.department.trim().length > 120)
+                return res.status(400).json({ success: false, message: "Department must be 120 characters or fewer." });
+            report.maintenanceAssignment.department = body.department.trim();
+        }
+        if (body.priority !== undefined) {
+            const priority = String(body.priority).toLowerCase();
+            if (!["low", "medium", "high", "urgent"].includes(priority))
+                return res.status(400).json({ success: false, message: "Priority must be low, medium, high or urgent." });
+            report.repairPriority = priority;
+        }
+        if (body.target_completion_date !== undefined) {
+            if (body.target_completion_date === "") report.targetCompletionDate = null;
+            else {
+                const date = new Date(body.target_completion_date);
+                if (!Number.isFinite(date.getTime())) return res.status(400).json({ success: false, message: "Enter a valid target completion date." });
+                report.targetCompletionDate = date;
+            }
+        }
+        if (body.note !== undefined && String(body.note).trim()) {
+            const note = String(body.note).trim();
+            if (note.length > 1000) return res.status(400).json({ success: false, message: "Repair notes must be 1000 characters or fewer." });
+            report.maintenanceNotes.push({
+                note,
+                author: String(req.user && (req.user.name || req.user.email) || "Admin").slice(0, 100)
+            });
+        }
+        if (body.repair_photos !== undefined) {
+            if (!Array.isArray(body.repair_photos) || body.repair_photos.length > 2)
+                return res.status(400).json({ success: false, message: "Upload at most two repair photos per update." });
+            const imagePattern = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+            const cloudinary = configureCloudinary();
+            for (const photo of body.repair_photos) {
+                if (!photo || typeof photo.image_base64 !== "string" || !imagePattern.test(photo.image_base64) || photo.image_base64.length > 5 * 1024 * 1024)
+                    return res.status(400).json({ success: false, message: "Each repair photo must be a valid image no larger than 3.7 MB." });
+            }
+            for (const photo of body.repair_photos) {
+                const uploaded = await cloudinary.uploader.upload(photo.image_base64, {
+                    folder: "roadguard-ai/repairs",
+                    resource_type: "image",
+                    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+                    transformation: [{ quality: "auto:good", fetch_format: "auto" }]
+                });
+                report.repairPhotos.push({
+                    imageUrl: uploaded.secure_url,
+                    caption: String(photo.caption || "").trim().slice(0, 120)
+                });
+            }
+        }
+        await report.save();
+        return res.json({
+            success: true,
+            message: "Maintenance details saved.",
+            data: {
+                id: report._id,
+                maintenance_assignment: { staff_name: report.maintenanceAssignment.staffName, department: report.maintenanceAssignment.department },
+                priority: report.repairPriority,
+                target_completion_date: report.targetCompletionDate,
+                maintenance_notes: report.maintenanceNotes,
+                repair_photos: report.repairPhotos.map(p => ({ image_url: p.imageUrl, caption: p.caption, uploaded_at: p.uploadedAt })),
+                repair_history: report.repairHistory
+            }
+        });
+    } catch (error) {
+        console.error("Maintenance update error:", error);
+        return res.status(500).json({ success: false, message: "Unable to save maintenance details." });
+    }
+});
+
 // Admin-only status changes.
 router.patch("/:id/status", protect, adminOnly, async (req, res) => {
     try {
@@ -226,12 +311,19 @@ router.patch("/:id/status", protect, adminOnly, async (req, res) => {
         if (!STATUSES.includes(status)) {
             return res.status(400).json({ success: false, message: "Invalid report status." });
         }
-        const report = await Report.findByIdAndUpdate(
-            req.params.id,
-            { status },
-            { new: true, runValidators: true }
-        ).populate("submittedBy", "name email");
+        const report = await Report.findById(req.params.id);
         if (!report) return res.status(404).json({ success: false, message: "Report not found." });
+        const previousStatus = report.status;
+        report.status = status;
+        if (previousStatus !== status) {
+            report.repairHistory.push({
+                fromStatus: previousStatus,
+                toStatus: status,
+                changedBy: String(req.user && (req.user.name || req.user.email) || "Admin").slice(0, 100)
+            });
+        }
+        await report.save();
+        await report.populate("submittedBy", "name email");
         return res.json({ success: true, message: "Report status updated.", data: present(report) });
     } catch (error) {
         console.error("Update report error:", error);
