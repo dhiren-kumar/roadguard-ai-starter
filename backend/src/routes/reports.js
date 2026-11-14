@@ -1,7 +1,8 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const Report = require("../models/Report");
-const { protect, adminOnly } = require("../middleware/auth");
+const User = require("../models/User");
+const { protect, adminOnly, staffOnly } = require("../middleware/auth");
 const { configureCloudinary } = require("../config/cloudinary");
 
 const router = express.Router();
@@ -28,7 +29,8 @@ function present(report) {
         contributor_email: r.contributorEmail || "",
         contributor_location: r.contributorLocation || "",
         timestamp: r.createdAt,
-        maintenance_assignment: { staff_name: r.maintenanceAssignment?.staffName || "", department: r.maintenanceAssignment?.department || "" },
+        maintenance_assignment: { staff_name: r.maintenanceAssignment?.staffName || "", staff_id: r.maintenanceAssignment?.staffId || null, department: r.maintenanceAssignment?.department || "" },
+        repair_verification_pending: !!r.maintenanceAssignment?.repairVerificationPending || !!r.repairVerificationPending,
         priority: r.repairPriority || "medium",
         target_completion_date: r.targetCompletionDate || null,
         maintenance_notes: (r.maintenanceNotes || []).map(n => ({ note: n.note, author: n.author, created_at: n.createdAt })),
@@ -240,6 +242,17 @@ router.patch("/:id/maintenance", protect, adminOnly, async (req, res) => {
 
         const body = req.body || {};
         if (!report.maintenanceAssignment) report.maintenanceAssignment = {};
+        if (body.staff_id !== undefined) {
+            if (body.staff_id === "") report.maintenanceAssignment.staffId = null;
+            else {
+                if (!mongoose.isValidObjectId(body.staff_id)) return res.status(400).json({ success: false, message: "Choose a valid maintenance staff account." });
+                const staff = await User.findOne({ _id: body.staff_id, role: "staff" }).select("name locationText");
+                if (!staff) return res.status(404).json({ success: false, message: "Maintenance staff account not found." });
+                report.maintenanceAssignment.staffId = staff._id;
+                report.maintenanceAssignment.staffName = staff.name;
+                if (!body.department && staff.locationText) report.maintenanceAssignment.department = staff.locationText;
+            }
+        }
         if (body.staff_name !== undefined) {
             if (typeof body.staff_name !== "string" || body.staff_name.trim().length > 100)
                 return res.status(400).json({ success: false, message: "Staff name must be 100 characters or fewer." });
@@ -276,11 +289,12 @@ router.patch("/:id/maintenance", protect, adminOnly, async (req, res) => {
             if (!Array.isArray(body.repair_photos) || body.repair_photos.length > 2)
                 return res.status(400).json({ success: false, message: "Upload at most two repair photos per update." });
             const imagePattern = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
-            const cloudinary = configureCloudinary();
             for (const photo of body.repair_photos) {
                 if (!photo || typeof photo.image_base64 !== "string" || !imagePattern.test(photo.image_base64) || photo.image_base64.length > 5 * 1024 * 1024)
                     return res.status(400).json({ success: false, message: "Each repair photo must be a valid image no larger than 3.7 MB." });
             }
+            if (body.repair_photos.length) {
+            const cloudinary = configureCloudinary();
             for (const photo of body.repair_photos) {
                 const uploaded = await cloudinary.uploader.upload(photo.image_base64, {
                     folder: "roadguard-ai/repairs",
@@ -292,6 +306,7 @@ router.patch("/:id/maintenance", protect, adminOnly, async (req, res) => {
                     imageUrl: uploaded.secure_url,
                     caption: String(photo.caption || "").trim().slice(0, 120)
                 });
+            }
             }
         }
         await report.save();
@@ -311,6 +326,64 @@ router.patch("/:id/maintenance", protect, adminOnly, async (req, res) => {
     } catch (error) {
         console.error("Maintenance update error:", error);
         return res.status(500).json({ success: false, message: "Unable to save maintenance details." });
+    }
+});
+
+// Staff can see only jobs assigned to their own account.
+router.get("/assigned", protect, staffOnly, async (req, res) => {
+    try {
+        const reports = await Report.find({ "maintenanceAssignment.staffId": req.user._id })
+            .sort({ repairPriority: -1, targetCompletionDate: 1, updatedAt: -1 });
+        return res.json({ success: true, data: reports.map(present) });
+    } catch (error) {
+        console.error("Assigned repair jobs error:", error);
+        return res.status(500).json({ success: false, message: "Unable to load assigned repair jobs." });
+    }
+});
+
+// Staff submit repair progress and photo evidence. Only the assigned staff member may update a job.
+router.patch("/:id/repair-update", protect, staffOnly, async (req, res) => {
+    try {
+        if (!mongoose.isValidObjectId(req.params.id)) return res.status(400).json({ success: false, message: "Invalid report ID." });
+        const report = await Report.findOne({ _id: req.params.id, "maintenanceAssignment.staffId": req.user._id });
+        if (!report) return res.status(404).json({ success: false, message: "This report is not assigned to your account." });
+        const note = typeof req.body.note === "string" ? req.body.note.trim() : "";
+        const progress = String(req.body.progress || "in_progress");
+        if (!["in_progress", "completed", "unable"].includes(progress)) return res.status(400).json({ success: false, message: "Choose a valid repair progress." });
+        if (!note) return res.status(400).json({ success: false, message: "Add a repair note before submitting." });
+        if (note.length > 1000) return res.status(400).json({ success: false, message: "Repair note must be 1000 characters or fewer." });
+        const photos = req.body.repair_photos;
+        if (!Array.isArray(photos) || photos.length < 1 || photos.length > 2) return res.status(400).json({ success: false, message: "Upload one or two repair photos with every update." });
+        const imagePattern = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+        for (const photo of photos) {
+            if (!photo || typeof photo.image_base64 !== "string" || !imagePattern.test(photo.image_base64) || photo.image_base64.length > 5 * 1024 * 1024)
+                return res.status(400).json({ success: false, message: "Each repair photo must be a valid image no larger than 3.7 MB." });
+        }
+        const cloudinary = configureCloudinary();
+        for (const photo of photos) {
+            const uploaded = await cloudinary.uploader.upload(photo.image_base64, {
+                folder: "roadguard-ai/repairs", resource_type: "image",
+                allowed_formats: ["jpg", "jpeg", "png", "webp"],
+                transformation: [{ quality: "auto:good", fetch_format: "auto" }]
+            });
+            report.repairPhotos.push({ imageUrl: uploaded.secure_url, caption: String(photo.caption || "").trim().slice(0, 120) });
+        }
+        report.maintenanceNotes.push({ note, author: String(req.user.name || req.user.email).slice(0, 100) });
+        if (progress === "in_progress") {
+            if (report.status === "approved") report.status = "under-construction";
+            report.repairVerificationPending = false;
+        } else if (progress === "completed") {
+            report.repairVerificationPending = true;
+            report.repairHistory.push({ fromStatus: report.status, toStatus: "awaiting-admin-verification", note: "Staff submitted repair completion evidence.", changedBy: String(req.user.name || req.user.email).slice(0, 100) });
+        } else {
+            report.repairVerificationPending = false;
+            report.repairHistory.push({ fromStatus: report.status, toStatus: "needs-admin-review", note, changedBy: String(req.user.name || req.user.email).slice(0, 100) });
+        }
+        await report.save();
+        return res.json({ success: true, message: progress === "completed" ? "Repair submitted for admin verification." : "Repair progress submitted.", data: present(report) });
+    } catch (error) {
+        console.error("Staff repair update error:", error);
+        return res.status(500).json({ success: false, message: "Unable to submit repair update." });
     }
 });
 
