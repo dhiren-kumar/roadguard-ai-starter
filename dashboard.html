@@ -432,11 +432,18 @@ button.action-btn:hover{background:#10553b}
 
                 aiBadge.innerText = 'Camera active · Loading RoadGuard AI into local RAM…';
                 if (log) log.innerText = 'Live camera is ready. Loading the ONNX model into this device memory…';
-                await loadRoadGuardModel();
-                aiBadge.innerText = 'RoadGuard AI ready · loaded in local RAM';
-                const captureStatus = document.getElementById('captureStatus');
-                if (captureStatus) captureStatus.textContent = 'AI ready on this device. Tap Capture Image & Detect Damage to analyze a frame.';
-                if (log) log.innerText = 'Live camera and on-device AI are ready. Capture images manually to create a report.';
+                try {
+                    await loadRoadGuardModel();
+                    aiBadge.innerText = 'RoadGuard AI ready · loaded in local RAM';
+                    const captureStatus = document.getElementById('captureStatus');
+                    if (captureStatus) captureStatus.textContent = 'AI ready on this device. Tap Capture Image & Detect Damage to analyze a frame.';
+                    if (log) log.innerText = 'Live camera and on-device AI are ready. Capture images manually to create a report.';
+                } catch (modelError) {
+                    aiBadge.innerText = 'Camera active · AI model failed to load';
+                    const captureStatus = document.getElementById('captureStatus');
+                    if (captureStatus) captureStatus.textContent = 'Camera is working, but AI failed to load: ' + modelError.message;
+                    if (log) log.innerText = 'Live camera is available. Retry page refresh to load the AI model.';
+                }
                 const autoStatus = document.getElementById('autoReportStatus');
                 if (autoStatus) autoStatus.textContent = 'Manual capture mode · no report is sent until you tap Send Report to Admin.';
             } catch (err) {
@@ -997,6 +1004,7 @@ button.action-btn:hover{background:#10553b}
             // Intentionally disabled: contributors capture evidence manually and submit only on button tap.
             if (autoReportTimer) { clearInterval(autoReportTimer); autoReportTimer = null; }
         }
+        /* Legacy live auto-detection loop removed: manual capture is the only reporting trigger.
         function startAutoDetectionLoop() {
             if (autoReportTimer) clearInterval(autoReportTimer);
             autoReportTimer = setInterval(async () => {
@@ -1032,6 +1040,7 @@ button.action-btn:hover{background:#10553b}
                 }
             }, 2500);
         }
+        */
     </script>
 </body>
 </html>
