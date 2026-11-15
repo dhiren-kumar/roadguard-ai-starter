@@ -8,7 +8,7 @@ RoadGuard AI is a learning prototype for edge-based road-damage scanning, contri
 - API: Node.js and Express
 - Database: MongoDB with Mongoose
 - Authentication: bcrypt password hashes, email verification and signed JWT bearer tokens
-- Edge inference: ONNX Runtime Web in the browser (requires your trained `model/best.onnx` file)
+- Edge inference: ONNX Runtime Web in the browser (RF-DETR Medium is preferred; the existing YOLO `model/best.onnx` remains a fallback)
 - Map: Leaflet and OpenStreetMap
 
 ## Run locally
@@ -55,7 +55,7 @@ Protected API requests use `Authorization: Bearer <token>`. Passwords are hashed
 
 ## Important limitations
 
-- Put your actual trained ONNX model at `model/best.onnx`. The model output layout, class order and preprocessing in the current scanner must match the model you trained; an arbitrary ONNX file will not work.
+- RF-DETR Medium export: install `tools/requirements-rfdetr.txt`, place the supplied checkpoint at the repository root as `weights.pt`, then run `python tools/export_rfdetr.py --weights weights.pt`. Check `model/roadguard-rfdetr-medium.metadata.json` classNames against Roboflow dataset version 7's exported `data.yaml`, correct the order if needed, and rerun with `--confirm-class-order`. Until that verification flag is set, the browser intentionally keeps using the existing `model/best.onnx` backup. Do not commit the original checkpoint. The new ONNX may exceed GitHub's 100 MB per-file limit; use Git LFS or object storage if it does.
 - The scanner currently keeps captures in browser local storage until the contributor submits them. Browser storage can be cleared and is not a durable offline queue.
 - Report photos are currently stored as base64 strings in MongoDB for prototype simplicity. A production deployment should move photos to object storage and store only a validated URL.
 - Configure email delivery and test the verification link from the deployed service before inviting users.
