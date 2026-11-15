@@ -7,11 +7,11 @@ const captureBtn = $("captureBtn"), submitBtn = $("submitBtn"), resultBox = $("r
 const REPORT_URL = "/api/reports";
 const MODEL_URL = "./model/best.onnx?v=roadguard-edge-v1";
 const RF_CLASSES = ["Alligator Crack","Longitudinal Crack","Normal Road","Open Manhole","Pothole","Transverse Crack"];
-const YOLO_CLASSES = ["Longitudinal Crack","Transverse Crack","Alligator Crack","Pothole"];
 const IGNORE_CLASSES = new Set([2]);
 let contributor, stream = null, gpsWatch = null, coords = {lat:null,lng:null};
 let session = null, modelFamily = "unknown", modelPromise = null;
 let captured = null, detections = [], busy = false;
+const YOLO_CONFIDENCE_THRESHOLD = 0.25;
 
 try {
   contributor = JSON.parse(sessionStorage.getItem("roadguard_contributor") || "null");
@@ -124,6 +124,14 @@ function nms(items){
  }
  return kept.sort((a,b)=>b.confidence-a.confidence).slice(0,100);
 }
+function drawDetections(image, items) {
+ const canvas=document.createElement("canvas");canvas.width=image.naturalWidth||image.width;canvas.height=image.naturalHeight||image.height;
+ const ctx=canvas.getContext("2d");ctx.drawImage(image,0,0,canvas.width,canvas.height);
+ const scale=Math.max(1,canvas.width/640),fontSize=Math.max(14,scale*18);
+ ctx.lineWidth=Math.max(2,scale*3);ctx.font=`bold ${fontSize}px Arial`;ctx.textBaseline="top";
+ for(const item of items){const b=item.boundingBox,x=b.x*canvas.width,y=b.y*canvas.height,w=b.width*canvas.width,h=b.height*canvas.height,pad=5*scale,text=`${item.label} ${Math.round(item.confidence*100)}%`,labelY=Math.max(0,y-fontSize-pad*2);ctx.strokeStyle="#20e08a";ctx.fillStyle="#20e08a";ctx.strokeRect(x,y,w,h);ctx.fillRect(x,labelY,ctx.measureText(text).width+pad*2,fontSize+pad*2);ctx.fillStyle="#062418";ctx.fillText(text,x+pad,labelY+pad);}
+ return canvas.toDataURL("image/jpeg",.9);
+}
 async function runDetection(image) {
  await loadModel();
  const size=modelFamily==="rfdetr"?576:640;
@@ -156,21 +164,23 @@ async function runDetection(image) {
   return found.sort((a,b)=>b.confidence-a.confidence).slice(0,100);
  }
  const t=output[session.outputNames[0]],dims=t.dims,data=t.data;
- const featureCount=YOLO_CLASSES.length+4,withObj=featureCount+1;
+ const featureCount=19;
  let rows,at;
- if(dims.length===3&&(dims[1]===featureCount||dims[1]===withObj)){rows=dims[2];at=(r,c)=>data[c*rows+r];}
- else if(dims.length===3&&(dims[2]===featureCount||dims[2]===withObj)){rows=dims[1];at=(r,c)=>data[r*dims[2]+c];}
+ const channelsFirst=dims.length===3&&dims[1]===featureCount&&dims[2]===8400;
+ const channelsLast=dims.length===3&&dims[2]===featureCount&&dims[1]===8400;
+ if(channelsFirst){rows=dims[2];at=(r,c)=>data[c*rows+r];}
+ else if(channelsLast){rows=dims[1];at=(r,c)=>data[r*dims[2]+c];}
  else throw new Error("Unsupported YOLO output shape: "+dims.join("×"));
- const hasObj=dims[1]===withObj||dims[2]===withObj,offset=hasObj?5:4,candidates=[];
+ const classCount=featureCount-4,candidates=[];
  for(let r=0;r<rows;r++){
   const cx=Number(at(r,0)),cy=Number(at(r,1)),w=Number(at(r,2)),h=Number(at(r,3));
   if(![cx,cy,w,h].every(Number.isFinite)||w<=0||h<=0)continue;
-  let cls=0,score=0;for(let c=0;c<YOLO_CLASSES.length;c++){const v=Number(at(r,offset+c));if(v>score){score=v;cls=c;}}
-  const confidence=score*(hasObj?Number(at(r,4)):1);if(confidence<.6)continue;
+  let cls=0,score=0;for(let c=0;c<classCount;c++){const v=Number(at(r,4+c));if(v>score){score=v;cls=c;}}
+  const confidence=score;if(confidence<YOLO_CONFIDENCE_THRESHOLD)continue;
   const scale=Math.max(Math.abs(cx),Math.abs(cy),w,h)<=2?size:1;
   const x=Math.max(0,Math.min(size,(cx-w/2)*scale))/size,y=Math.max(0,Math.min(size,(cy-h/2)*scale))/size;
   const right=Math.max(0,Math.min(size,(cx+w/2)*scale))/size,bottom=Math.max(0,Math.min(size,(cy+h/2)*scale))/size;
-  if(right>x&&bottom>y)candidates.push({label:YOLO_CLASSES[cls],confidence,boundingBox:{x,y,width:right-x,height:bottom-y}});
+  if(right>x&&bottom>y)candidates.push({label:`Class ${cls}`,classId:cls,confidence,boundingBox:{x,y,width:right-x,height:bottom-y}});
  }
  return nms(candidates);
 }
@@ -191,6 +201,7 @@ async function captureRoad() {
   const image=new Image();image.src=captured;
   await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=()=>reject(new Error("Could not read captured image."));});
   detections=await runDetection(image);
+  if(detections.length){captured=drawDetections(image,detections);photo.src=captured;}
   statusResult(detections.length
    ? "AI detected: "+detections.map(d=>d.label+" ("+Math.round(d.confidence*100)+"%)").join(", ")+". Review the photo and submit the report."
    : "AI analysis complete. No confident damage detection; you can still submit this photo for review.");
