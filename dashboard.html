@@ -219,8 +219,8 @@ button.action-btn:hover{background:#10553b}
             <div style="margin:12px 0;padding:14px;background:#f2f6f2;border:1px solid #dce5de;border-radius:10px;color:#405449">
                 <strong>Road Damage Capture</strong>
                 <p style="font-size:13px;margin:6px 0 10px">Keep the live camera open. Capture each damaged area; RoadGuard AI analyzes every captured image automatically.</p>
-                <button class="action-btn" id="captureImageBtn" type="button" onclick="captureAndAnalyzeImage()">📷 Capture Image & Detect Damage</button>
-                <div id="captureStatus" role="status" style="font-size:13px;margin:10px 0;color:#405449">AI model loads into this device's RAM. Capture an image when ready.</div>
+                <div id="captureStatus" role="status" aria-live="polite" style="font-size:13px;margin:10px 0;color:#405449">⏳ Loading RoadGuard AI into device RAM…</div>
+                <button class="action-btn" id="captureImageBtn" type="button" onclick="captureAndAnalyzeImage()" disabled style="width:100%;margin:4px 0 12px;opacity:.55">📷 Capture Image & Detect Damage</button>
                 <div id="capturedEvidenceList" style="display:grid;gap:12px;margin:10px 0"></div>
                 <div id="captureCount" style="font-size:13px;color:#64748b;margin:8px 0">Captured images: 0 / 5</div>
                 <label for="manualSeverity">Report severity</label>
@@ -436,12 +436,16 @@ button.action-btn:hover{background:#10553b}
                     await loadRoadGuardModel();
                     aiBadge.innerText = 'RoadGuard AI ready · loaded in local RAM';
                     const captureStatus = document.getElementById('captureStatus');
-                    if (captureStatus) captureStatus.textContent = 'AI ready on this device. Tap Capture Image & Detect Damage to analyze a frame.';
+                    if (captureStatus) captureStatus.textContent = '✅ RoadGuard AI loaded in local RAM and ready. You can capture now.';
+                    const captureButton = document.getElementById('captureImageBtn');
+                    if (captureButton) { captureButton.disabled = false; captureButton.style.opacity = '1'; }
                     if (log) log.innerText = 'Live camera and on-device AI are ready. Capture images manually to create a report.';
                 } catch (modelError) {
                     aiBadge.innerText = 'Camera active · AI model failed to load';
                     const captureStatus = document.getElementById('captureStatus');
-                    if (captureStatus) captureStatus.textContent = 'Camera is working, but AI failed to load: ' + modelError.message;
+                    if (captureStatus) captureStatus.textContent = '⚠️ AI model did not load: ' + modelError.message + '. Capture is disabled until AI is ready.';
+                    const captureButton = document.getElementById('captureImageBtn');
+                    if (captureButton) { captureButton.disabled = true; captureButton.style.opacity = '.55'; }
                     if (log) log.innerText = 'Live camera is available. Retry page refresh to load the AI model.';
                 }
                 const autoStatus = document.getElementById('autoReportStatus');
