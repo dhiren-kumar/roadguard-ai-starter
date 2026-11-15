@@ -74,7 +74,7 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
     </div>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Photo</th><th>Damage type</th><th>Severity</th><th>Location</th><th>District</th><th>Reported on</th><th>Progress status</th><th>Details</th></tr></thead>
+        <thead><tr><th>Photo</th><th>Damage type</th><th>Severity</th><th>Location</th><th>Contributor</th><th>District</th><th>Reported on</th><th>Progress status</th><th>Details</th></tr></thead>
         <tbody id="reportTable"><tr><td colspan="7" class="empty">Loading public reports…</td></tr></tbody>
       </table>
     </div>
@@ -194,11 +194,12 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
         locationCell.appendChild(viewButton);
       }
       tr.appendChild(locationCell);
+      cell(tr,r.reporter_name||"—");
       const districtCell=cell(tr,"Finding district…");districtCell.className="district-cell";districtCell.dataset.districtFor=reportKey;
       cell(tr,r.timestamp?new Date(r.timestamp).toLocaleString():"—");
       const statusCell=document.createElement("td");
-      const status=String(r.status||"unknown").toLowerCase();
-      const badge=document.createElement("span");badge.className="pill status-"+status;badge.textContent=status.replaceAll("-"," ");
+      const status=r.is_sample?"demo":String(r.status||"unknown").toLowerCase();
+      const badge=document.createElement("span");badge.className="pill status-"+status;badge.textContent=r.is_sample?"demo":status.replaceAll("-"," ");
       statusCell.appendChild(badge);tr.appendChild(statusCell);
       const detailsCell=document.createElement("td");
       const detailsButton=document.createElement("button");
