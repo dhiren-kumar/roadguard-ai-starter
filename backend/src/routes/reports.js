@@ -127,7 +127,13 @@ router.get("/public/:id", async (req, res) => {
 // Admin queue: authentication and role are checked on the server.
 router.get("/", protect, adminOnly, async (req, res) => {
     try {
-        const reports = await Report.find().populate("submittedBy", "name email").sort({ createdAt: -1 });
+        // The admin table and repair dialog need only these fields. Avoid loading
+        // unbounded report documents and large unrelated payloads on every refresh.
+        const reports = await Report.find()
+            .select("_id damageType severity description status location locationName imageUrl evidencePhotos damageCount contributorName contributorPhone contributorEmail contributorLocation createdAt maintenanceAssignment repairVerificationPending repairPriority targetCompletionDate maintenanceNotes repairPhotos repairHistory")
+            .sort({ createdAt: -1 })
+            .limit(200)
+            .lean();
         return res.json({ success: true, data: reports.map(present) });
     } catch (error) {
         console.error("Admin reports error:", error);
