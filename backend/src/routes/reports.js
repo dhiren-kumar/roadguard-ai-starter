@@ -170,8 +170,8 @@ router.post("/", async (req, res) => {
         }
         const imagePattern = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
         for (const photo of photos) {
-            if (!photo || typeof photo.image_base64 !== "string" || !imagePattern.test(photo.image_base64) || photo.image_base64.length > 5 * 1024 * 1024) {
-                return res.status(400).json({ success: false, message: "Each evidence photo must be a valid image no larger than 3.7 MB." });
+            if (!photo || typeof photo.image_base64 !== "string" || !imagePattern.test(photo.image_base64) || photo.image_base64.length > 10 * 1024 * 1024) {
+                return res.status(400).json({ success: false, message: "Each evidence photo must be a valid image no larger than approximately 7.5 MB." });
             }
             if (photo.detections !== undefined && (!Array.isArray(photo.detections) || photo.detections.length > 100)) {
                 return res.status(400).json({ success: false, message: "Each photo can contain at most 100 AI detections." });
@@ -290,8 +290,8 @@ router.patch("/:id/maintenance", protect, adminOnly, async (req, res) => {
                 return res.status(400).json({ success: false, message: "Upload at most two repair photos per update." });
             const imagePattern = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
             for (const photo of body.repair_photos) {
-                if (!photo || typeof photo.image_base64 !== "string" || !imagePattern.test(photo.image_base64) || photo.image_base64.length > 5 * 1024 * 1024)
-                    return res.status(400).json({ success: false, message: "Each repair photo must be a valid image no larger than 3.7 MB." });
+                if (!photo || typeof photo.image_base64 !== "string" || !imagePattern.test(photo.image_base64) || photo.image_base64.length > 10 * 1024 * 1024)
+                    return res.status(400).json({ success: false, message: "Each repair photo must be a valid image no larger than approximately 7.5 MB." });
             }
             if (body.repair_photos.length) {
             const cloudinary = configureCloudinary();
@@ -356,8 +356,8 @@ router.patch("/:id/repair-update", protect, staffOnly, async (req, res) => {
         if (!Array.isArray(photos) || photos.length < 1 || photos.length > 2) return res.status(400).json({ success: false, message: "Upload one or two repair photos with every update." });
         const imagePattern = /^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
         for (const photo of photos) {
-            if (!photo || typeof photo.image_base64 !== "string" || !imagePattern.test(photo.image_base64) || photo.image_base64.length > 5 * 1024 * 1024)
-                return res.status(400).json({ success: false, message: "Each repair photo must be a valid image no larger than 3.7 MB." });
+            if (!photo || typeof photo.image_base64 !== "string" || !imagePattern.test(photo.image_base64) || photo.image_base64.length > 10 * 1024 * 1024)
+                return res.status(400).json({ success: false, message: "Each repair photo must be a valid image no larger than approximately 7.5 MB." });
         }
         const cloudinary = configureCloudinary();
         for (const photo of photos) {

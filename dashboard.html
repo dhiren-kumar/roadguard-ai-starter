@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RoadGuard Edge AI - Live Multi-Damage Road Scanner</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <style>
         body { 
             font-family: Arial, sans-serif; 
@@ -20,7 +19,8 @@
         }
         .header { 
             width: 100%; 
-            max-width: 440px; 
+            max-width: 1180px; 
+            grid-column: 1 / -1;
             display: flex; 
             justify-content: space-between; 
             align-items: center; 
@@ -37,31 +37,22 @@
             text-decoration: none; 
             font-size: 0.85rem; 
         }
-        #onboardModal { 
-            background: #1e293b; 
-            padding: 1.5rem; 
-            border-radius: 8px; 
-            width: 100%; 
-            max-width: 440px; 
-            box-sizing: border-box; 
-            border: 1px solid #334155; 
-            margin-top: 20px; 
-        }
-        #onboardModal h3 { margin-top: 0; color: #38bdf8; text-align: center; }
-        
         #scannerContainer { 
-            display: none; 
+            display: grid; 
             width: 100%; 
-            max-width: 440px; 
-            flex-direction: column; 
-            align-items: center; 
+            max-width: 1180px; 
+            display: grid;
+            grid-template-columns: minmax(0, 1.1fr) minmax(360px, .9fr);
+            align-items: start;
+            gap: 18px; 
             box-sizing: border-box;
         }
         .vid-box { 
             position: relative;
             width: 100%; 
-            max-width: 440px; 
-            margin-bottom: 15px; 
+            max-width: none; 
+            min-width: 0;
+            margin-bottom: 0; 
             box-sizing: border-box;
         }
         video, canvas { 
@@ -73,16 +64,34 @@
             box-sizing: border-box; 
             display: block;
         }
+        #cam {
+            position: relative;
+            z-index: 1;
+            display: block;
+            width: 100%;
+            height: min(62vh, 480px);
+            min-height: 220px;
+            max-height: 62vh;
+            aspect-ratio: 4 / 3;
+            object-fit: cover;
+            background: #0f172a;
+            transform: none;
+            -webkit-transform: none;
+        }
         #bboxOverlay {
             position: absolute;
+            z-index: 2;
             inset: 0;
+            display: block;
             width: 100%;
             height: 100%;
             border: 0;
             border-radius: 8px;
+            background: transparent !important;
             pointer-events: none;
-            z-index: 2;
         }
+        .vid-box { isolation: isolate; }
+        .vid-box canvas#canvas { display: none !important; }
         .panel { 
             background: #1e293b; 
             padding: 1.2rem; 
@@ -141,8 +150,6 @@
 <link rel="stylesheet" href="css/style.css">
 <style>
 body{background:#f6f9f6;color:#17251f}
-#onboardModal,.panel{background:#fff;color:#17251f;border:1px solid #e4ebe6;border-radius:14px;box-shadow:0 10px 30px #183d2508}
-#onboardModal h3{color:#176b4b}
 .header small,.panel small{color:#6d7b74}
 .back-btn{background:#e9f4ed;color:#176b4b;border-radius:8px}
 video,canvas{border:1px solid #dce5de;background:#edf3ee;border-radius:12px}
@@ -151,26 +158,19 @@ button.action-btn{background:#176b4b;border-radius:8px}
 button.action-btn:hover{background:#10553b}
 .ai-badge{background:#e9f4ed;border:1px solid #cfe2d4;color:#176b4b;border-radius:8px}
 .log{background:#f2f6f2;color:#405449;border:1px solid #e4ebe6;border-radius:8px}
+
+@media (max-width: 760px) {
+  #scannerContainer { grid-template-columns: minmax(0, 1fr); max-width: 560px; }
+  #scannerContainer > .header { grid-column: 1; }
+  #scannerContainer > .vid-box { grid-column: 1; }
+  #scannerContainer > .panel { grid-column: 1; }
+  #cam { height: min(48vh, 380px); min-height: 210px; }
+}
 </style>
 </head>
 <body>
 
-    <div id="onboardModal">
-        <h3>Contributor Details</h3>
-        <p style="font-size:0.85rem; color:#64748b; text-align:center;">Enter your details to start reporting. No account or password is needed.</p>
-        <form id="contributorForm">
-          <label for="contributorName">Full name</label><input id="contributorName" name="name" maxlength="100" required autocomplete="name" placeholder="Your full name">
-          <label for="contributorPhone">Phone number</label><input id="contributorPhone" name="phone" type="tel" maxlength="20" required autocomplete="tel" placeholder="Your contact number">
-          <label for="contributorEmail">Email (optional)</label><input id="contributorEmail" name="email" type="email" maxlength="254" autocomplete="email" placeholder="Your email address">
-          <label for="contributorLocation">Location (optional)</label><input id="contributorLocation" name="location" maxlength="200" placeholder="Area / city">
-          <button class="action-btn" type="submit">Continue to Road Scanner</button>
-        </form>
-        <p id="loginPrompt" role="status"></p>
-        <a href="index.html" class="back-btn" style="display:block;text-align:center;margin-top:15px;background:transparent;color:#64748b;">← Back to Map</a>
-    </div>
-
-    <div id="scannerContainer">
-        <div class="header">
+    <div id="scannerContainer">        <div class="header">
             <div>
                 <h3 style="margin:0;" id="welcomeHeader">Multi-Damage Scanner</h3>
                 <small id="userMeta" style="color:#94a3b8;"></small>
@@ -186,6 +186,24 @@ button.action-btn:hover{background:#10553b}
 
         <div class="panel">
             <div class="ai-badge" id="aiBadge">Edge AI: Loading model into device RAM...</div>
+            <div style="margin:12px 0;padding:14px;background:#f2f6f2;border:1px solid #dce5de;border-radius:10px;color:#405449">
+                <strong>Road Damage Capture</strong>
+                <p style="font-size:13px;margin:6px 0 10px">Keep the live camera open. Capture each damaged area; RoadGuard AI analyzes every captured image automatically.</p>
+                <div id="captureStatus" role="status" aria-live="polite" style="font-size:13px;margin:10px 0;color:#405449">⏳ Loading RoadGuard AI into device RAM…</div>
+                <button class="action-btn" id="captureImageBtn" type="button" onclick="captureAndAnalyzeImage()" disabled style="width:100%;margin:4px 0 12px;opacity:.55">📷 Capture Photo & Detect Damage</button>
+                <div id="capturedEvidenceList" style="display:grid;gap:12px;margin:10px 0"></div>
+                <div id="captureCount" style="font-size:13px;color:#64748b;margin:8px 0">Captured images: 0 / 5</div>
+                <label for="manualSeverity">Report severity</label>
+                <select id="manualSeverity" style="width:100%;padding:11px;border:1px solid #dce5de;border-radius:8px;background:#fff;color:#17251f;margin-bottom:12px">
+                    <option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option>
+                </select>
+                <label for="manualDescription">Additional details (optional)</label>
+                <textarea id="manualDescription" rows="3" maxlength="1000" placeholder="Describe the road condition or nearby landmark" style="width:100%;padding:11px;box-sizing:border-box;border:1px solid #dce5de;border-radius:8px;background:#fff;color:#17251f;margin-bottom:8px"></textarea>
+                <button class="action-btn" id="sendManualReportBtn" type="button" onclick="submitManualRoadReport()" disabled>Send Report to Admin</button>
+                <button class="action-btn" id="clearCurrentReportBtn" type="button" onclick="resetCurrentReport()" style="background:#64748b">Clear Current Report</button>
+                <div id="manualReportStatus" role="status" style="font-size:13px;margin-top:10px;color:#405449">Capture one or more images before sending.</div>
+            </div>
+
   <div id="gpsPanel" style="background:#f2f6f2;border:1px solid #dce5de;border-radius:8px;padding:12px;margin:10px 0;color:#405449;font-size:13px">
     <strong>Live GPS</strong>
     <div id="gpsStatus" role="status" style="margin-top:6px">Waiting for GPS permission…</div>
@@ -198,22 +216,16 @@ button.action-btn:hover{background:#10553b}
     <input id="reportLocationName" type="text" maxlength="200" placeholder="e.g. Janpath Road, near XYZ School" style="margin-bottom:8px">
   </div>
 
-            <div style="font-size:0.85rem;color:#64748b;margin:12px 0" id="localCountInfo">Saved Road Reports: 0</div>
-            <div id="sessionStatus" class="ai-badge">No active report. Start a report for one road incident.</div>
-            <button class="action-btn" id="startReportBtn" onclick="startReportSession()">Start New Road Report</button>
-            <button class="action-btn" id="capturePhotoBtn" onclick="captureEvidencePhoto()" disabled style="background:#0d9488">Capture Evidence Photo</button>
-            <button class="action-btn" id="finishReportBtn" onclick="finishReportSession()" disabled style="background:#475569">Finish & Save Report</button>
-            <button class="action-btn" onclick="sendReportsToPanel()" style="background:#3b82f6;">Send Saved Reports to Panel</button>
-            <div id="evidencePreview" style="font-size:13px;color:#475569;margin-top:10px"></div>
             <div class="log" id="logBox">Initializing GPS and Camera permissions...</div>
         </div>
     </div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <script>
         let contributor = null;
         const video = document.getElementById('cam');
+        let cameraStream = null;
+        let cameraStarting = false;
         const canvas = document.getElementById('canvas');
         const bboxOverlay = document.getElementById('bboxOverlay');
         const bboxContext = bboxOverlay.getContext('2d');
@@ -223,43 +235,47 @@ button.action-btn:hover{background:#10553b}
         let coords = { lat: null, lng: null };
         let gpsWatchId = null;
         let ortSession = null;
+        let modelLoadPromise = null;
+        let manualDetections = [];
         let isScanning = false;
         let latestDetections = [];
-        let activeReportSession = null;
-        const MAX_EVIDENCE_PHOTOS = 5;
+        let autoReportBusy = false;
+        let lastAutoReportAt = 0;
+        let lastAutoReportSignature = '';
+        let autoDetectionStreak = 0;
+        const AUTO_REPORT_COOLDOWN_MS = 45000;
+        const AUTO_REPORT_MIN_STREAK = 2;
+        const AUTO_REPORT_CONFIDENCE = 0.35;
+        let autoReportTimer = null;
         const MODEL_SIZE = 640; // Legacy YOLO model input
         const RFDETR_MODEL_SIZE = 576; // RF-DETR Medium v7 input
         const DAMAGE_CLASSES = ['Longitudinal Crack', 'Transverse Crack', 'Alligator Crack', 'Pothole'];
         // Exact class order from Road Damage Detection India v7 data.yaml.
         const RFDETR_CLASSES = ['Alligator Crack', 'Longitudinal Crack', 'Normal Road', 'Open Manhole', 'Pothole', 'Transverse Crack'];
-        const RFDETR_IGNORED_CLASS_IDS = new Set([0, 2]); // Alligator has no train/valid/test labels yet; Normal Road is not damage
+        const RFDETR_IGNORED_CLASS_IDS = new Set([2]); // Ignore Normal Road only; retain Alligator Crack as a reportable class.
         let modelFamily = 'unknown';
 
         const BACKEND_URL = '/api/reports';
 
-        function startContributorSession() {
-            const form = document.getElementById('contributorForm');
-            if (!form.reportValidity()) return;
-            contributor = {
-                name: document.getElementById('contributorName').value.trim(),
-                phone: document.getElementById('contributorPhone').value.trim(),
-                email: document.getElementById('contributorEmail').value.trim(),
-                locationText: document.getElementById('contributorLocation').value.trim()
-            };
-            if (!contributor.name || !contributor.phone) return;
-            document.getElementById('onboardModal').style.display = 'none';
-            document.getElementById('scannerContainer').style.display = 'flex';
-            document.getElementById('welcomeHeader').innerText = `Welcome, ${contributor.name}`;
-            document.getElementById('userMeta').innerText = contributor.phone;
-            updateLocalStorageCount();
-            initGPS();
-            initCameraAndModel();
+        const savedContributor = sessionStorage.getItem('roadguard_contributor');
+        if (!savedContributor) {
+            window.location.replace('contributor.html');
+        } else {
+            try {
+                contributor = JSON.parse(savedContributor);
+                if (!contributor || !contributor.name || !contributor.phone) throw new Error('Invalid contributor details');
+                document.getElementById('welcomeHeader').innerText = 'Welcome, ' + contributor.name;
+                document.getElementById('userMeta').innerText = contributor.phone;
+                updateLocalStorageCount();
+                const status = document.getElementById('autoReportStatus');
+                if (status) status.textContent = 'Opening live camera and loading RoadGuard AI into device RAM…';
+                initGPS();
+                initCameraAndModel();
+            } catch (error) {
+                sessionStorage.removeItem('roadguard_contributor');
+                window.location.replace('contributor.html');
+            }
         }
-
-        document.getElementById('contributorForm').addEventListener('submit', event => {
-            event.preventDefault();
-            startContributorSession();
-        });
 
         window.onload = () => updateLocalStorageCount();
 
@@ -296,47 +312,200 @@ button.action-btn:hover{background:#10553b}
             }
         }
 
-        window.addEventListener('pagehide', stopGPS);
+        window.addEventListener('pagehide', () => {
+            stopGPS();
+            stopCamera();
+        });
+
+        async function loadRoadGuardModel() {
+            if (ortSession) return ortSession;
+            if (modelLoadPromise) return modelLoadPromise;
+            modelLoadPromise = (async () => {
+                if (!window.ort || !window.ort.InferenceSession) {
+                    throw new Error('ONNX Runtime did not load. Refresh the page and try again.');
+                }
+                aiBadge.innerText = 'Loading RoadGuard AI model…';
+                // Fetch the model explicitly so the contributor sees real download progress.
+                // force-cache reuses the server's 24-hour model cache on repeat visits.
+                const response = await fetch('./model/best.onnx', { cache: 'force-cache' });
+                if (!response.ok) throw new Error('Model download failed (HTTP ' + response.status + ').');
+                const total = Number(response.headers.get('content-length')) || 0;
+                let received = 0;
+                let modelBytes;
+                if (response.body && response.body.getReader) {
+                    const reader = response.body.getReader();
+                    const chunks = [];
+                    while (true) {
+                        const part = await reader.read();
+                        if (part.done) break;
+                        chunks.push(part.value);
+                        received += part.value.byteLength;
+                        const mb = (received / 1048576).toFixed(1);
+                        const totalText = total ? ' / ' + (total / 1048576).toFixed(1) + ' MB' : ' MB';
+                        const percent = total ? ' (' + Math.round(received / total * 100) + '%)' : '';
+                        aiBadge.innerText = 'Downloading RoadGuard AI: ' + mb + totalText + percent;
+                        const captureStatus = document.getElementById('captureStatus');
+                        if (captureStatus) captureStatus.textContent = '⬇️ Downloading AI model: ' + mb + totalText + percent;
+                    }
+                    modelBytes = new Uint8Array(received);
+                    let offset = 0;
+                    for (const chunk of chunks) { modelBytes.set(chunk, offset); offset += chunk.byteLength; }
+                } else {
+                    modelBytes = new Uint8Array(await response.arrayBuffer());
+                }
+                aiBadge.innerText = 'Initializing AI in device RAM…';
+                const captureStatus = document.getElementById('captureStatus');
+                if (captureStatus) captureStatus.textContent = '⚙️ Model downloaded. Initializing AI in device RAM…';
+                const session = await ort.InferenceSession.create(modelBytes, {
+                    executionProviders: ['wasm'],
+                    graphOptimizationLevel: 'all'
+                });
+                const outputNames = (session.outputNames || []).map(name => String(name).toLowerCase());
+                modelFamily = outputNames.some(name => name.includes('dets')) && outputNames.some(name => name.includes('labels'))
+                    ? 'rfdetr' : 'yolo';
+                ortSession = session;
+                aiBadge.innerText = 'RoadGuard AI ready · ' + modelFamily.toUpperCase();
+                return ortSession;
+            })();
+            try { return await modelLoadPromise; }
+            catch (error) { modelLoadPromise = null; throw error; }
+        }
 
         async function initCameraAndModel() {
+            if (cameraStarting) return;
+            cameraStarting = true;
+
+            aiBadge.innerText = 'Opening phone camera and preparing AI…';
+            if (log) log.innerText = 'Requesting camera permission. Please allow camera access.';
+
             try {
-                let stream;
+                if (!window.isSecureContext) {
+                    throw new Error('Camera access requires HTTPS. Open the secure https:// RoadGuard website.');
+                }
+                if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+                    throw new Error('This browser does not support camera access. Open RoadGuard in the latest Chrome browser.');
+                }
+                // Prefer the rear camera, but do not require an exact device match:
+                // Android devices often reject exact environment constraints.
+                const preferredConstraints = {
+                    audio: false,
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
+
                 try {
-                    stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: { facingMode: { exact: 'environment' } } 
-                    });
-                } catch (err1) {
-                    stream = await navigator.mediaDevices.getUserMedia({ 
-                        video: true 
+                    cameraStream = await navigator.mediaDevices.getUserMedia(preferredConstraints);
+                } catch (preferredError) {
+                    console.warn('Preferred rear-camera request failed; trying browser default camera:', preferredError);
+                    cameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+                }
+
+                video.muted = true;
+                video.autoplay = true;
+                video.playsInline = true;
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+                video.srcObject = cameraStream;
+
+                // Wait for real camera dimensions before starting inference.
+                if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => {
+                            cleanup();
+                            reject(new Error('Camera connected but no video frames arrived. Close other camera apps and try again.'));
+                        }, 12000);
+                        const onReady = () => { cleanup(); resolve(); };
+                        const onError = () => { cleanup(); reject(new Error('The camera stream could not be decoded by this browser.')); };
+                        function cleanup() {
+                            clearTimeout(timeout);
+                            video.removeEventListener('loadedmetadata', onReady);
+                            video.removeEventListener('error', onError);
+                        }
+                        video.addEventListener('loadedmetadata', onReady, { once: true });
+                        video.addEventListener('error', onError, { once: true });
                     });
                 }
 
-                video.srcObject = stream;
-                video.onloadeddata = async () => {
-                    try {
-                        ortSession = await ort.InferenceSession.create('./model/best.onnx', { executionProviders: ['wasm'] });
-                        const outputNames = (ortSession.outputNames || []).map(name => String(name).toLowerCase());
-                        modelFamily = outputNames.some(name => name.includes('dets')) && outputNames.some(name => name.includes('labels'))
-                            ? 'rfdetr'
-                            : 'yolo';
-                        aiBadge.innerText = modelFamily === 'rfdetr'
-                            ? 'Edge AI Ready: RoadGuard RF-DETR v7 · processing on this device'
-                            : 'Edge AI Ready: Legacy YOLO · processing on this device';
-                        startAutoDetectionLoop();
-                    } catch (err) {
-                        console.error(err);
-                        aiBadge.innerText = 'AI Error: Ensure /model/best.onnx is uploaded.';
-                    }
-                };
-            } catch (err) {
-                console.error("Camera Error:", err);
-                if (log) {
-                    log.innerText = `Camera Error: [${err.name}] ${err.message}`;
+                if (!video.videoWidth || !video.videoHeight) {
+                    throw new Error('Camera opened but returned an empty video frame. Restart the camera and try again.');
                 }
-                alert(`Camera access failed: ${err.message}. Please check browser permissions.`);
+
+                await video.play();
+                // Some Android browsers resolve play() before the first camera frame is painted.
+                if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => {
+                            cleanup();
+                            reject(new Error('Camera opened but no live frames appeared. Allow camera permission and reopen the scanner.'));
+                        }, 10000);
+                        const onFrame = () => { cleanup(); resolve(); };
+                        function cleanup() {
+                            clearTimeout(timeout);
+                            video.removeEventListener('loadeddata', onFrame);
+                            video.removeEventListener('playing', onFrame);
+                        }
+                        video.addEventListener('loadeddata', onFrame, { once: true });
+                        video.addEventListener('playing', onFrame, { once: true });
+                    });
+                }
+                if (log) log.innerText = 'Camera preview active (' + video.videoWidth + ' × ' + video.videoHeight + '). Loading RoadGuard AI model…';
+                aiBadge.innerText = 'Camera active · Loading on-device AI model…';
+
+                aiBadge.innerText = 'Camera active · Loading RoadGuard AI into local RAM…';
+                if (log) log.innerText = 'Live camera is ready. Loading the ONNX model into this device memory…';
+                try {
+                    // Give camera startup priority; load the large AI model only after live video is ready.
+                    await loadRoadGuardModel();
+                    aiBadge.innerText = 'RoadGuard AI ready · loaded in local RAM';
+                    const captureStatus = document.getElementById('captureStatus');
+                    if (captureStatus) captureStatus.textContent = '✅ RoadGuard AI loaded in local RAM and ready. You can capture now.';
+                    const captureButton = document.getElementById('captureImageBtn');
+                    if (captureButton) { captureButton.disabled = false; captureButton.style.opacity = '1'; }
+                    if (log) log.innerText = 'Live camera and on-device AI are ready. Capture images manually to create a report.';
+                } catch (modelError) {
+                    aiBadge.innerText = 'Camera active · AI model failed to load';
+                    const captureStatus = document.getElementById('captureStatus');
+                    if (captureStatus) captureStatus.textContent = '⚠️ AI model did not load: ' + modelError.message + '. Capture is disabled until AI is ready.';
+                    const captureButton = document.getElementById('captureImageBtn');
+                    if (captureButton) { captureButton.disabled = true; captureButton.style.opacity = '.55'; }
+                    if (log) log.innerText = 'Live camera is available. Retry page refresh to load the AI model.';
+                }
+                const autoStatus = document.getElementById('autoReportStatus');
+                if (autoStatus) autoStatus.textContent = 'Manual capture mode · no report is sent until you tap Send Report to Admin.';
+            } catch (err) {
+                console.error('Camera / model initialization error:', err);
+                if (cameraStream) {
+                    cameraStream.getTracks().forEach(track => track.stop());
+                    cameraStream = null;
+                }
+                video.srcObject = null;
+                const message = err && err.name === 'NotAllowedError'
+                    ? 'Camera permission denied. In Chrome, tap the site icon → Permissions → Camera → Allow, then reload.'
+                    : err && err.name === 'NotFoundError'
+                        ? 'No camera was found on this device.'
+                        : err && err.name === 'NotReadableError'
+                            ? 'The camera is busy in another app. Close other camera/video apps and retry.'
+                            : (err.message || 'Unable to start the camera.');
+                if (log) log.innerText = 'Camera unavailable: ' + message;
+                aiBadge.innerText = 'Camera unavailable · ' + message;
+            } finally {
+                cameraStarting = false;
             }
         }
 
+        function stopCamera() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            if (video) {
+                video.pause();
+                video.srcObject = null;
+            }
+        }
         function intersectionOverUnion(a, b) {
             const left = Math.max(a.x1, b.x1), top = Math.max(a.y1, b.y1);
             const right = Math.min(a.x2, b.x2), bottom = Math.min(a.y2, b.y2);
@@ -366,15 +535,18 @@ button.action-btn:hover{background:#10553b}
             return kept.sort((a, b) => b.confidence - a.confidence).slice(0, 100);
         }
 
-        async function analyzeFrameForMultipleDamages() {
-            if (!ortSession || !video || video.readyState < 2) return [];
+        async function analyzeFrameForMultipleDamages(source = video) {
+            if (!ortSession || !source) return [];
+            const sourceWidth = source.videoWidth || source.naturalWidth || source.width || 0;
+            const sourceHeight = source.videoHeight || source.naturalHeight || source.height || 0;
+            if (!sourceWidth || !sourceHeight) return [];
             const isRfdetr = modelFamily === 'rfdetr';
             const size = isRfdetr ? RFDETR_MODEL_SIZE : MODEL_SIZE;
             const offscreen = document.createElement('canvas');
             offscreen.width = size;
             offscreen.height = size;
             const ctx = offscreen.getContext('2d', { willReadFrequently: true });
-            ctx.drawImage(video, 0, 0, size, size);
+            ctx.drawImage(source, 0, 0, size, size);
             const { data } = ctx.getImageData(0, 0, size, size);
             const floatData = new Float32Array(3 * size * size);
             const area = size * size;
@@ -421,7 +593,6 @@ button.action-btn:hover{background:#10553b}
                 if (boxDims[2] !== 4 || classSlots !== RFDETR_CLASSES.length + 1 || logitDims[1] !== queryCount) {
                     throw new Error('RF-DETR output does not match the six-class RoadGuard v7 model.');
                 }
-
                 const boxes = boxesTensor.data;
                 const logits = logitsTensor.data;
                 const detections = [];
@@ -535,169 +706,268 @@ button.action-btn:hover{background:#10553b}
             });
         }
 
-        function startAutoDetectionLoop() {
-            setInterval(async () => {
-                if (isScanning) return;
-                isScanning = true;
-
-                let detectedList = [];
-                try { detectedList = await analyzeFrameForMultipleDamages(); }
-                catch (error) { console.error('YOLO decode error:', error); aiBadge.innerText = 'AI output format error: ' + error.message; drawLiveBoundingBoxes([]); isScanning = false; return; }
-                if (detectedList.length > 0) {
-                    const count = detectedList.length;
-                    let severity = 'Normal Damage';
-                    if (count > 10) {
-                        severity = 'High Red Severity';
-                    } else if (count > 4) {
-                        severity = 'Medium';
-                    }
-
-                    aiBadge.innerText = `Detected ${count} damages (${severity})`;
-
-                    latestDetections = detectedList;
-                    drawLiveBoundingBoxes(detectedList);
-                    if (activeReportSession) document.getElementById("sessionStatus").textContent = "Active report · " + activeReportSession.photos.length + "/5 photos · " + count + " detection(s) in current frame.";
-                } else {
-                    latestDetections = [];
-                    drawLiveBoundingBoxes([]);
-                    aiBadge.innerText = 'Scanning road locally... (Clear)';
-                }
-
-                setTimeout(() => { isScanning = false; }, 4000);
-            }, 2000);
+        function getContributorReportsKey() {
+            const identity = String(contributor?.phone || contributor?.email || contributor?.name || 'guest').trim().toLowerCase();
+            return 'roadguard_local_reports_' + identity.replace(/[^a-z0-9]/g, '').slice(0, 48);
         }
 
-        function startReportSession() {
-            if (activeReportSession) return alert('Finish the current report first.');
-            if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return alert('Waiting for a valid GPS fix. Allow location access first.');
-            activeReportSession = {
-                contributor_name: contributor?.name || '',
-                contributor_phone: contributor?.phone || '',
-                contributor_email: contributor?.email || '',
-                contributor_location: contributor?.locationText || '',
-                location_name: document.getElementById('reportLocationName').value.trim(),
-                latitude: coords.lat, longitude: coords.lng, timestamp: new Date().toISOString(), photos: []
-            };
-            document.getElementById('startReportBtn').disabled = true;
-            document.getElementById('capturePhotoBtn').disabled = false;
-            document.getElementById('finishReportBtn').disabled = false;
-            document.getElementById('sessionStatus').textContent = 'Report started. Capture up to 5 photos of this same road incident.';
-            renderEvidencePreview();
+        function getSavedReports() {
+            try {
+                const value = JSON.parse(localStorage.getItem(getContributorReportsKey()) || '[]');
+                return Array.isArray(value) ? value : [];
+            } catch (_) { return []; }
         }
 
-        function captureEvidencePhoto() {
-            if (!activeReportSession) return;
-            if (activeReportSession.photos.length >= MAX_EVIDENCE_PHOTOS) return alert('Maximum 5 photos per report.');
-            if (!video || video.readyState < 2) return alert('Camera is not ready.');
-            const shot = document.createElement('canvas');
-            shot.width = 640; shot.height = 480;
-            shot.getContext('2d').drawImage(video, 0, 0, shot.width, shot.height);
-            const detections = latestDetections.map(d => ({
-                label: d.label, confidence: d.confidence, boundingBox: { ...d.boundingBox }
-            }));
-            // Burn the exact AI rectangles and labels into the evidence image.
-            const shotCtx = shot.getContext('2d');
-            shotCtx.lineWidth = 3;
-            shotCtx.font = 'bold 15px Arial';
-            detections.forEach(d => {
-                const b = d.boundingBox;
-                const x = b.x * shot.width, y = b.y * shot.height;
-                const w = b.width * shot.width, h = b.height * shot.height;
-                shotCtx.strokeStyle = '#ef4444';
-                shotCtx.fillStyle = '#ef4444';
-                shotCtx.strokeRect(x, y, w, h);
-                const tag = d.label + ' ' + Math.round(d.confidence * 100) + '%';
-                const tw = shotCtx.measureText(tag).width + 10;
-                shotCtx.fillRect(x, Math.max(0, y - 22), tw, 22);
-                shotCtx.fillStyle = '#fff';
-                shotCtx.fillText(tag, x + 5, Math.max(15, y - 6));
-            });
-            activeReportSession.photos.push({ image_base64: shot.toDataURL('image/jpeg', 0.72), detections, captured_at: new Date().toISOString() });
-            renderEvidencePreview();
-            document.getElementById('sessionStatus').textContent = 'Captured photo ' + activeReportSession.photos.length + '/5 with ' + detections.length + ' AI detection(s).';
-        }
-
-        function renderEvidencePreview() {
-            const el = document.getElementById('evidencePreview');
-            if (!el) return;
-            if (!activeReportSession) { el.textContent = ''; return; }
-            const total = activeReportSession.photos.reduce((n, p) => n + p.detections.length, 0);
-            el.innerHTML = '<strong>Photos: ' + activeReportSession.photos.length + ' · Total detections: ' + total + '</strong>' +
-                '<ol style="padding-left:22px">' + activeReportSession.photos.map((p, i) =>
-                '<li>Photo ' + (i + 1) + ': ' + p.detections.length + ' — ' + (p.detections.map(d => d.label).join(', ') || 'No AI detections') + '</li>').join('') + '</ol>';
-        }
-
-        function finishReportSession() {
-            if (!activeReportSession) return;
-            if (!activeReportSession.photos.length) return alert('Capture at least one evidence photo first.');
-            const all = activeReportSession.photos.flatMap(p => p.detections);
-            const types = [...new Set(all.map(d => d.label).filter(Boolean))];
-            const total = all.length;
-            const report = {
-                ...activeReportSession,
-                damage_type: types.join(', ') || 'Road damage',
-                damage_count: total,
-                severity: total > 10 ? 'high' : total > 4 ? 'medium' : 'low',
-                description: 'One road incident with ' + activeReportSession.photos.length + ' evidence photo(s) and ' + total + ' AI detection(s).'
-            };
-            const saved = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
-            saved.push(report);
-            localStorage.setItem('roadguard_local_reports', JSON.stringify(saved));
-            activeReportSession = null;
-            document.getElementById('startReportBtn').disabled = false;
-            document.getElementById('capturePhotoBtn').disabled = true;
-            document.getElementById('finishReportBtn').disabled = true;
-            document.getElementById('sessionStatus').textContent = 'One grouped report saved locally. Start another incident when ready.';
-            renderEvidencePreview();
+        function saveReports(reports) {
+            localStorage.setItem(getContributorReportsKey(), JSON.stringify(reports));
             updateLocalStorageCount();
-            if (log) log.innerText = 'Saved one report with ' + report.photos.length + ' evidence photo(s) and ' + total + ' AI detection(s).';
         }
 
         function updateLocalStorageCount() {
-            const localReports = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
+            const reports = getSavedReports();
             const infoEl = document.getElementById('localCountInfo');
-            if (infoEl) infoEl.innerText = `Saved Road Reports: ${localReports.length}`;
+            if (infoEl) infoEl.innerText = 'Unsent reports: ' + reports.length;
+            const clearBtn = document.getElementById('clearSavedReportsBtn');
+            if (clearBtn) clearBtn.disabled = reports.length === 0;
         }
 
-        async function sendReportsToPanel() {
-            const localReports = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
-            if (!localReports.length) return alert('No saved reports to send.');
-            let successCount = 0;
-            const failedReports = [];
-            const reasons = [];
-            for (const report of localReports) {
-                try {
-                    const photos = Array.isArray(report.photos) && report.photos.length ? report.photos :
-                        [{ image_base64: report.image_base64, detections: report.damages_detected || [] }];
-                    const response = await fetch(BACKEND_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                        body: JSON.stringify({
-                            contributor_name: report.contributor_name, contributor_phone: report.contributor_phone,
-                            contributor_email: report.contributor_email, contributor_location: report.contributor_location,
-                            location_name: report.location_name || '', latitude: report.latitude, longitude: report.longitude,
-                            severity: report.severity, description: report.description || 'Road damage detected by on-device AI.',
-                            damage_type: report.damage_type || 'Road damage',
-                            evidence_photos: photos.map(p => ({ image_base64: p.image_base64, detections: p.detections || [] }))
-                        })
-                    });
-                    const raw = await response.text();
-                    let result = {}; try { result = raw ? JSON.parse(raw) : {}; } catch (_) {}
-                    if (response.ok && result.success) successCount++;
-                    else { failedReports.push(report); reasons.push('HTTP ' + response.status + ': ' + (result.message || raw.slice(0, 160))); }
-                } catch (err) { failedReports.push(report); reasons.push(err.message || 'Network error'); }
+        function clearSavedReports() {
+            const reports = getSavedReports();
+            if (!reports.length) {
+                updateLocalStorageCount();
+                return;
             }
-            localStorage.setItem('roadguard_local_reports', JSON.stringify(failedReports));
-            updateLocalStorageCount();
-            if (successCount) {
-                alert('Successfully sent ' + successCount + ' grouped report(s). ' + failedReports.length + ' remain saved locally.');
-                if (log) log.innerText = 'Upload finished. Failed reports remain saved locally.';
-            } else {
-                const reason = reasons[0] || 'Unknown upload error';
-                if (log) log.innerText = 'Upload failed: ' + reason;
-                alert('Report upload failed: ' + reason + '. Your ' + failedReports.length + ' report(s) remain saved locally. Do not clear browser data.');
+            if (!confirm('Delete ' + reports.length + ' unsent report(s) saved on this device for this contributor? This cannot be undone.')) return;
+            saveReports([]);
+            const status = document.getElementById('autoReportStatus');
+            if (status) status.textContent = 'Saved unsent reports cleared. Automatic scanning remains active.';
+            if (log) log.innerText = 'Cleared this contributor’s locally saved unsent reports.';
+        }
+
+        function captureAutoEvidence(detections) {
+            if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return null;
+            const shot = document.createElement('canvas');
+            shot.width = 960;
+            shot.height = Math.round(960 * video.videoHeight / video.videoWidth);
+            const ctx = shot.getContext('2d');
+            ctx.drawImage(video, 0, 0, shot.width, shot.height);
+            ctx.lineWidth = Math.max(2, shot.width / 320);
+            ctx.font = 'bold 18px Arial';
+            detections.forEach(d => {
+                const b = d.boundingBox || {};
+                const x = (b.x || 0) * shot.width, y = (b.y || 0) * shot.height;
+                const w = (b.width || 0) * shot.width, h = (b.height || 0) * shot.height;
+                ctx.strokeStyle = '#ef4444';
+                ctx.fillStyle = '#ef4444';
+                ctx.strokeRect(x, y, w, h);
+                const tag = d.label + ' ' + Math.round((d.confidence || 0) * 100) + '%';
+                const tw = ctx.measureText(tag).width + 12;
+                ctx.fillRect(x, Math.max(0, y - 25), tw, 25);
+                ctx.fillStyle = '#fff';
+                ctx.fillText(tag, x + 6, Math.max(18, y - 7));
+            });
+            return {
+                image_base64: shot.toDataURL('image/jpeg', 0.78),
+                detections: detections.map(d => ({
+                    label: d.label,
+                    confidence: d.confidence,
+                    boundingBox: d.boundingBox ? { ...d.boundingBox } : null
+                })),
+                captured_at: new Date().toISOString()
+            };
+        }
+
+        async function submitAutomaticRoadReport(detections) {
+            if (autoReportBusy || !contributor || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return;
+            const now = Date.now();
+            const types = [...new Set(detections.map(d => d.label).filter(Boolean))].sort();
+            const signature = types.join('|');            if (now - lastAutoReportAt < AUTO_REPORT_COOLDOWN_MS) return;
+            if (signature === lastAutoReportSignature && now - lastAutoReportAt < AUTO_REPORT_COOLDOWN_MS * 2) return;
+
+            const evidence = captureAutoEvidence(detections);
+            if (!evidence) return;
+            autoReportBusy = true;
+            lastAutoReportAt = now;
+            lastAutoReportSignature = signature;
+
+            const total = detections.length;
+            const report = {
+                contributor_name: contributor.name,
+                contributor_phone: contributor.phone,
+                contributor_email: contributor.email || '',
+                contributor_location: contributor.locationText || '',
+                location_name: document.getElementById('reportLocationName')?.value.trim() || '',
+                latitude: coords.lat,
+                longitude: coords.lng,
+                timestamp: new Date().toISOString(),
+                severity: total > 10 ? 'high' : total > 4 ? 'medium' : 'low',
+                damage_type: types.join(', ') || 'Road damage',
+                damage_count: total,
+                description: 'Automatically detected by RoadGuard AI during live road scanning. ' + total + ' detection(s).',
+                photos: [evidence]
+            };
+
+            const status = document.getElementById('autoReportStatus');
+            if (status) status.textContent = 'Road damage detected. Automatically sending report…';
+            try {
+                const response = await fetch(BACKEND_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({
+                        contributor_name: report.contributor_name,
+                        contributor_phone: report.contributor_phone,
+                        contributor_email: report.contributor_email,
+                        contributor_location: report.contributor_location,
+                        location_name: report.location_name,
+                        latitude: report.latitude,
+                        longitude: report.longitude,
+                        severity: report.severity,
+                        description: report.description,
+                        damage_type: report.damage_type,
+                        evidence_photos: report.photos.map(p => ({
+                            image_base64: p.image_base64,
+                            detections: p.detections
+                        }))
+                    })
+                });
+                const raw = await response.text();
+                let result = {};
+                try { result = raw ? JSON.parse(raw) : {}; } catch (_) {}
+                if (!response.ok || !result.success) {
+                    throw new Error(result.message || raw.slice(0, 180) || ('HTTP ' + response.status));
+                }
+                if (status) status.textContent = 'Report sent successfully · ' + report.damage_type;
+                if (log) log.innerText = 'RoadGuard AI automatically submitted ' + report.damage_type + ' at the current GPS location.';
+            } catch (err) {
+                const pending = getSavedReports();
+                pending.push(report);
+                saveReports(pending);
+                if (status) status.textContent = 'Damage detected. Upload failed; report saved on this device for this contributor.';
+                if (log) log.innerText = 'Automatic report upload failed: ' + (err.message || 'Network error') + '. It is saved locally; retry when online.';
+            } finally {
+                autoReportBusy = false;
             }
         }
-    </script>
-</body>
-</html>
+
+        let capturedEvidence = [];
+        let captureBusy = false;
+
+        function renderCapturedEvidence() {
+            const list = document.getElementById('capturedEvidenceList');
+            const count = document.getElementById('captureCount');
+            const send = document.getElementById('sendManualReportBtn');
+            list.innerHTML = '';
+            capturedEvidence.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.style.cssText = 'background:#fff;border:1px solid #dce5de;border-radius:9px;padding:10px;color:#405449';
+                const image = document.createElement('img');
+                image.src = item.image_base64;
+                image.alt = 'Captured road evidence ' + (index + 1);
+                image.style.cssText = 'width:100%;max-height:240px;object-fit:contain;border-radius:7px';
+                const heading = document.createElement('strong');
+                heading.textContent = 'Image ' + (index + 1) + ' · ' + new Date(item.captured_at).toLocaleTimeString();
+                const details = document.createElement('div');
+                details.style.cssText = 'font-size:13px;margin:7px 0';
+                const detailsText = item.detections.map(d =>
+                    d.label + ' (' + Math.round((Number(d.confidence) || 0) * 100) + '%)'
+                );
+                details.textContent = detailsText.length
+                    ? 'AI detected: ' + detailsText.join(' · ') + ' · ' + item.detections.length + ' detection(s)'
+                    : 'AI result: No confident damage detected · admin review required';
+                const remove = document.createElement('button');
+                remove.type = 'button';
+                remove.className = 'action-btn';
+                remove.style.cssText = 'background:#64748b;margin-top:4px';
+                remove.textContent = 'Remove image';
+                remove.addEventListener('click', () => {
+                    capturedEvidence.splice(index, 1);
+                    renderCapturedEvidence();
+                });
+                card.append(image, heading, details, remove);
+                list.appendChild(card);
+            });
+            count.textContent = 'Captured images: ' + capturedEvidence.length + ' / 5';
+            send.disabled = capturedEvidence.length === 0 || captureBusy;
+        }
+
+        async function captureAndAnalyzeImage() {
+            const button = document.getElementById('captureImageBtn');
+            const status = document.getElementById('captureStatus');
+            if (captureBusy) return;
+            if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+                status.textContent = 'Camera is not ready. Wait for the live preview and try again.';
+                return;
+            }
+            if (capturedEvidence.length >= 5) {
+                status.textContent = 'A report can contain up to five photos. Send this report or remove an image first.';
+                return;
+            }
+            if (!ortSession) {
+                status.textContent = 'RoadGuard AI is still loading into local RAM. Please wait.';
+                try { await loadRoadGuardModel(); }
+                catch (error) { status.textContent = 'AI model failed to load: ' + error.message; return; }
+            }
+            captureBusy = true;
+            button.disabled = true;
+            button.textContent = 'Capturing & analyzing…';
+            status.textContent = 'Capturing camera frame and running on-device AI…';
+            try {
+                const shot = document.createElement('canvas');
+                const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+                shot.width = Math.max(1, Math.round(video.videoWidth * scale));
+                shot.height = Math.max(1, Math.round(video.videoHeight * scale));
+                shot.getContext('2d').drawImage(video, 0, 0, shot.width, shot.height);
+                const detections = await analyzeFrameForMultipleDamages(shot);
+                const imageBase64 = shot.toDataURL('image/jpeg', 0.82);
+                if (imageBase64.length > 10 * 1024 * 1024) throw new Error('Captured image is too large. Try again.');
+                capturedEvidence.push({
+                    image_base64: imageBase64,
+                    detections: detections.map(d => ({
+                        label: d.label,
+                        confidence: d.confidence,
+                        boundingBox: d.boundingBox || null
+                    })),
+                    captured_at: new Date().toISOString(),
+                    latitude: Number.isFinite(coords.lat) ? coords.lat : null,
+                    longitude: Number.isFinite(coords.lng) ? coords.lng : null
+                });
+                renderCapturedEvidence();
+                const types = [...new Set(detections.map(d => d.label))];
+                status.textContent = types.length
+                    ? 'AI detected ' + types.join(', ') + '. Capture another image or send the report to admin.'
+                    : 'No confident damage class detected in this image. It is retained as evidence for admin review.';
+                aiBadge.innerText = 'AI analysis complete · ' + capturedEvidence.length + ' image(s) captured';
+            } catch (error) {
+                status.textContent = 'Capture/AI analysis failed: ' + (error.message || 'Unknown error');
+            } finally {
+                captureBusy = false;
+                button.disabled = false;
+                button.textContent = '📷 Capture Photo & Detect Damage';
+                renderCapturedEvidence();
+            }
+        }
+
+        function resetCurrentReport() {
+            capturedEvidence = [];
+            document.getElementById('reportLocationName').value = '';
+            document.getElementById('manualSeverity').value = 'medium';
+            document.getElementById('manualDescription').value = '';
+            document.getElementById('manualReportStatus').textContent = 'Capture one or more images before sending.';
+            document.getElementById('captureStatus').textContent = ortSession
+                ? 'AI ready on this device. Tap Capture Image & Detect Damage to analyze a frame.'
+                : 'AI model is loading into local RAM…';
+            renderCapturedEvidence();
+        }
+
+        async function submitManualRoadReport() {
+            const button = document.getElementById('sendManualReportBtn');
+            const status = document.getElementById('manualReportStatus');
+            if (!contributor) {
+                status.textContent = 'Contributor details are missing. Exit and start again.';
+                return;
+            }
+            if (!capturedEvidence.length) {
+                status.textContent = 'Capture at least one road image first.';
+                return;
+            }
+            if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RoadGuard AI · Contributor Details</title>
+<link rel="stylesheet" href="css/style.css">
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preload" as="script" href="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js">
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,sans-serif;background:#f6f9f6;color:#17251f;min-height:100vh;margin:0;padding:24px 14px;display:grid;place-items:center}
+.card{width:100%;max-width:480px;background:#fff;border:1px solid #e4ebe6;border-radius:14px;box-shadow:0 10px 30px #183d2508;padding:24px}
+h2{margin:0 0 10px;text-align:center;color:#176b4b;font-size:22px}
+.intro{text-align:center;color:#6d7b74;font-size:14px;line-height:1.5;margin:0 0 22px}
+label{display:block;margin:14px 0 6px;color:#687b70;font-size:13px}
+input{width:100%;padding:13px 12px;border:1px solid #dce5de;border-radius:8px;background:#fff;color:#17251f;font:inherit}
+button{width:100%;margin-top:18px;padding:14px;border:0;border-radius:8px;background:#176b4b;color:#fff;font-weight:700;font-size:14px;cursor:pointer}
+button:hover{background:#10553b}
+.back{display:block;text-align:center;margin-top:18px;color:#647b6d;text-decoration:none;font-size:14px}
+.status{min-height:18px;color:#b45309;font-size:13px;margin-top:10px}
+</style>
+</head>
+<body>
+<main class="card">
+<h2>Contributor Details</h2>
+<p class="intro">Enter your details to start reporting. No account or password is needed.</p>
+<form id="contributorForm">
+<label for="contributorName">Full name</label>
+<input id="contributorName" name="name" maxlength="100" required autocomplete="name" placeholder="Your full name">
+<label for="contributorPhone">Phone number</label>
+<input id="contributorPhone" name="phone" type="tel" maxlength="20" required autocomplete="tel" placeholder="Your contact number">
+<label for="contributorEmail">Email (optional)</label>
+<input id="contributorEmail" name="email" type="email" maxlength="254" autocomplete="email" placeholder="Your email address">
+<label for="contributorLocation">Location (optional)</label>
+<input id="contributorLocation" name="location" maxlength="200" placeholder="Area / city">
+<button type="submit">Continue to Road Scanner</button>
+</form>
+<div class="status" id="formStatus" role="status"></div>
+<a class="back" href="index.html">← Back to Map</a>
+</main>
+<script>
+document.getElementById('contributorForm').addEventListener('submit', event => {
+ event.preventDefault();
+ const form = event.currentTarget;
+ if (!form.reportValidity()) return;
+ const contributor = {
+  name: document.getElementById('contributorName').value.trim(),
+  phone: document.getElementById('contributorPhone').value.trim(),
+  email: document.getElementById('contributorEmail').value.trim(),
+  locationText: document.getElementById('contributorLocation').value.trim()
+ };
+ if (!contributor.name || !contributor.phone) return;
+ sessionStorage.setItem('roadguard_contributor', JSON.stringify(contributor));
+ window.location.href = 'dashboard.html';
+});
+</script>
+</body>
+</html>
