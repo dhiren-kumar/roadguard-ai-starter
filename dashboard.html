@@ -841,9 +841,11 @@ button.action-btn:hover{background:#10553b}
                 heading.textContent = 'Image ' + (index + 1) + ' · ' + new Date(item.captured_at).toLocaleTimeString();
                 const details = document.createElement('div');
                 details.style.cssText = 'font-size:13px;margin:7px 0';
-                const labels = [...new Set(item.detections.map(d => d.label))];
-                details.textContent = labels.length
-                    ? 'AI detected: ' + labels.join(', ') + ' · ' + item.detections.length + ' detection(s)'
+                const detailsText = item.detections.map(d =>
+                    d.label + ' (' + Math.round((Number(d.confidence) || 0) * 100) + '%)'
+                );
+                details.textContent = detailsText.length
+                    ? 'AI detected: ' + detailsText.join(' · ') + ' · ' + item.detections.length + ' detection(s)'
                     : 'AI result: No confident damage detected · admin review required';
                 const remove = document.createElement('button');
                 remove.type = 'button';
