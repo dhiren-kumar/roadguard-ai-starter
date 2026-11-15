@@ -180,7 +180,7 @@ button.action-btn:hover{background:#10553b}
 
         <div class="vid-box">
             <button class="action-btn" id="startCameraBtn" type="button" style="margin:0 0 10px">▶ Start Camera</button>
-            <label for="phoneCameraInput" class="action-btn" style="display:block;text-align:center;margin:0 0 10px;cursor:pointer;background:#2563eb">Use Phone Camera (fallback)</label>
+            <button class="action-btn" id="openPhoneCameraBtn" type="button" style="display:block;margin:0 0 10px;background:#2563eb">📷 Open Phone Camera</button>
             <input id="phoneCameraInput" type="file" accept="image/*" capture="environment" style="display:none">
             <video id="cam" autoplay playsinline muted></video>
             <canvas id="bboxOverlay" aria-label="Live AI detection bounding boxes"></canvas>
@@ -287,6 +287,11 @@ button.action-btn:hover{background:#10553b}
 
         document.getElementById('startCameraBtn').addEventListener('click', () => initCameraOnly());
         document.getElementById('phoneCameraInput').addEventListener('change', captureFromPhoneCamera);
+        document.getElementById('openPhoneCameraBtn').addEventListener('click', () => {
+            const input = document.getElementById('phoneCameraInput');
+            input.value = '';
+            input.click();
+        });
 
 
         function initGPS() {
@@ -410,7 +415,15 @@ button.action-btn:hover{background:#10553b}
                     throw new Error('Camera access requires HTTPS. Open https://roadguard-ai-kwuc.onrender.com/dashboard.html directly in Chrome.');
                 }
                 if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
-                    throw new Error('Live camera is unavailable in this in-app browser. Open this page in Chrome, or use the Phone Camera button.');
+                    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+                    if (isMobile) {
+                        const input = document.getElementById('phoneCameraInput');
+                        if (captureStatus) captureStatus.textContent = 'This browser blocks live preview. Opening your phone camera instead…';
+                        if (log) log.innerText = 'Live preview is not supported here. Opening the native phone camera.';
+                        if (input) { input.value = ''; input.click(); }
+                        return;
+                    }
+                    throw new Error('Live camera is unavailable in this browser. Use Open Phone Camera to capture a photo.');
                 }
 
                 // Release any stale stream before requesting a fresh camera session.
