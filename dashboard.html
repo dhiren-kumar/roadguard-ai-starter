@@ -222,15 +222,10 @@ button.action-btn:hover{background:#10553b}
                 <label for="manualEvidence">Road damage photo</label>
                 <input id="manualEvidence" type="file" accept="image/*" capture="environment" required style="margin-bottom:8px">
                 <img id="manualEvidencePreview" alt="Selected road evidence preview" style="display:none;width:100%;max-height:280px;object-fit:contain;border-radius:8px;margin:8px 0 12px">
-                <label for="manualDamageType">Damage type</label>
-                <select id="manualDamageType" style="width:100%;padding:11px;border:1px solid #dce5de;border-radius:8px;background:#fff;color:#17251f;margin-bottom:12px">
-                    <option value="Pothole">Pothole</option>
-                    <option value="Longitudinal Crack">Longitudinal Crack</option>
-                    <option value="Transverse Crack">Transverse Crack</option>
-                    <option value="Alligator Crack">Alligator Crack</option>
-                    <option value="Open Manhole">Open Manhole</option>
-                    <option value="Other road damage">Other road damage</option>
-                </select>
+                <div id="manualAiResult" role="status" style="padding:11px;background:#fff;border:1px solid #dce5de;border-radius:8px;margin:10px 0;color:#405449">
+                    AI will identify the damage type automatically after you select a photo.
+                </div>
+                <div id="manualAiDetections" style="font-size:13px;color:#405449;margin:8px 0"></div>
                 <label for="manualSeverity">Severity</label>
                 <select id="manualSeverity" style="width:100%;padding:11px;border:1px solid #dce5de;border-radius:8px;background:#fff;color:#17251f;margin-bottom:12px">
                     <option value="low">Low</option>
@@ -265,6 +260,8 @@ button.action-btn:hover{background:#10553b}
         let coords = { lat: null, lng: null };
         let gpsWatchId = null;
         let ortSession = null;
+        let modelLoadPromise = null;
+        let manualDetections = [];
         let isScanning = false;
         let latestDetections = [];
         let autoReportBusy = false;
@@ -351,6 +348,29 @@ button.action-btn:hover{background:#10553b}
             stopCamera();
         });
 
+        async function loadRoadGuardModel() {
+            if (ortSession) return ortSession;
+            if (modelLoadPromise) return modelLoadPromise;
+            modelLoadPromise = (async () => {
+                if (!window.ort || !window.ort.InferenceSession) {
+                    throw new Error('ONNX Runtime did not load. Refresh the page and try again.');
+                }
+                aiBadge.innerText = 'Loading RoadGuard AI model…';
+                const session = await ort.InferenceSession.create('./model/best.onnx', {
+                    executionProviders: ['wasm'],
+                    graphOptimizationLevel: 'all'
+                });
+                const outputNames = (session.outputNames || []).map(name => String(name).toLowerCase());
+                modelFamily = outputNames.some(name => name.includes('dets')) && outputNames.some(name => name.includes('labels'))
+                    ? 'rfdetr' : 'yolo';
+                ortSession = session;
+                aiBadge.innerText = 'RoadGuard AI ready · ' + modelFamily.toUpperCase();
+                return ortSession;
+            })();
+            try { return await modelLoadPromise; }
+            catch (error) { modelLoadPromise = null; throw error; }
+        }
+
         async function initCameraAndModel() {
             if (cameraStarting) return;
             cameraStarting = true;
@@ -417,9 +437,9 @@ button.action-btn:hover{background:#10553b}
                 if (log) log.innerText = 'Camera preview active (' + video.videoWidth + ' × ' + video.videoHeight + '). Loading RoadGuard AI model…';
                 aiBadge.innerText = 'Camera active · Loading on-device AI model…';
 
-                aiBadge.innerText = 'Manual reporting mode · Camera ready';
-                if (log) log.innerText = 'Camera preview active. Take a photo or choose one below, add damage details, then send it to the admin.';
-                // Live AI auto-submission is intentionally disabled until model predictions are validated.
+                aiBadge.innerText = 'Camera ready · AI loads when you choose a photo';
+                if (log) log.innerText = 'Camera preview active. Take a photo or choose one below; RoadGuard AI will classify the evidence before submission.';
+                // Detection runs on the selected still image; live auto-submission remains disabled.
             } catch (err) {
                 console.error('Camera / model initialization error:', err);
                 if (cameraStream) {
@@ -480,15 +500,18 @@ button.action-btn:hover{background:#10553b}
             return kept.sort((a, b) => b.confidence - a.confidence).slice(0, 100);
         }
 
-        async function analyzeFrameForMultipleDamages() {
-            if (!ortSession || !video || video.readyState < 2) return [];
+        async function analyzeFrameForMultipleDamages(source = video) {
+            if (!ortSession || !source) return [];
+            const sourceWidth = source.videoWidth || source.naturalWidth || source.width || 0;
+            const sourceHeight = source.videoHeight || source.naturalHeight || source.height || 0;
+            if (!sourceWidth || !sourceHeight) return [];
             const isRfdetr = modelFamily === 'rfdetr';
             const size = isRfdetr ? RFDETR_MODEL_SIZE : MODEL_SIZE;
             const offscreen = document.createElement('canvas');
             offscreen.width = size;
             offscreen.height = size;
             const ctx = offscreen.getContext('2d', { willReadFrequently: true });
-            ctx.drawImage(video, 0, 0, size, size);
+            ctx.drawImage(source, 0, 0, size, size);
             const { data } = ctx.getImageData(0, 0, size, size);
             const floatData = new Float32Array(3 * size * size);
             const area = size * size;
@@ -810,11 +833,48 @@ button.action-btn:hover{background:#10553b}
             preview.style.display = 'block';
         }
 
-        document.getElementById('manualEvidence').addEventListener('change', () => {
-            try { previewManualEvidence(); }
-            catch (error) {
-                const status = document.getElementById('manualReportStatus');
-                if (status) status.textContent = error.message;
+        document.getElementById('manualEvidence').addEventListener('change', async () => {
+            const status = document.getElementById('manualReportStatus');
+            const resultBox = document.getElementById('manualAiResult');
+            const listBox = document.getElementById('manualAiDetections');
+            const file = document.getElementById('manualEvidence').files?.[0];
+            manualDetections = [];
+            listBox.textContent = '';
+            try {
+                previewManualEvidence();
+                if (!file) return;
+                status.textContent = 'Photo selected. Loading AI model and analyzing image…';
+                resultBox.textContent = 'RoadGuard AI is analyzing the selected photo…';
+                await loadRoadGuardModel();
+                const image = new Image();
+                image.src = document.getElementById('manualEvidencePreview').src;
+                await new Promise((resolve, reject) => {
+                    image.onload = resolve;
+                    image.onerror = () => reject(new Error('Could not open the selected photo for AI analysis.'));
+                });
+                const detections = await analyzeFrameForMultipleDamages(image);
+                manualDetections = detections.filter(d => d && d.label && Number.isFinite(d.confidence));
+                if (manualDetections.length) {
+                    const grouped = new Map();
+                    manualDetections.forEach(d => {
+                        const previous = grouped.get(d.label) || 0;
+                        grouped.set(d.label, Math.max(previous, d.confidence));
+                    });
+                    const labels = [...grouped.entries()].sort((a,b) => b[1]-a[1]);
+                    resultBox.textContent = 'AI detected: ' + labels.map(([label, score]) => label + ' (' + Math.round(score * 100) + '%)').join(', ');
+                    listBox.textContent = manualDetections.length + ' detection(s) found. Admin will receive the AI labels, confidence scores and evidence photo.';
+                    status.textContent = 'AI analysis complete. Review the detected result, then send the report to admin.';
+                } else {
+                    resultBox.textContent = 'No confident damage type detected. The report can still be sent for admin review as unclassified.';
+                    listBox.textContent = 'No AI bounding-box detections found in this photo.';
+                    status.textContent = 'AI analysis complete with no confident detection. You can still submit for admin review.';
+                }
+                aiBadge.innerText = 'AI photo analysis complete';
+            } catch (error) {
+                manualDetections = [];
+                resultBox.textContent = 'AI analysis unavailable: ' + (error.message || 'Unknown error');
+                status.textContent = 'AI could not analyze this photo. Refresh and try again; the report will not be mislabeled.';
+                aiBadge.innerText = 'AI analysis failed';
             }
         });
 
@@ -868,10 +928,13 @@ button.action-btn:hover{background:#10553b}
             status.textContent = 'Preparing photo and sending report to admin…';
             try {
                 const imageBase64 = await compressManualEvidence(file);
-                const damageType = document.getElementById('manualDamageType').value;
+                const groupedTypes = [...new Set(manualDetections.map(d => d.label))];
+                const damageType = groupedTypes.length ? groupedTypes.join(', ') : 'AI review required - unclassified road damage';
                 const severity = document.getElementById('manualSeverity').value;
                 const description = document.getElementById('manualDescription').value.trim() ||
-                    'Manually submitted road damage report by contributor.';
+                    (groupedTypes.length
+                        ? 'Damage type automatically identified by RoadGuard AI: ' + damageType
+                        : 'Photo submitted for admin review; RoadGuard AI did not find a confident damage class.');
                 const response = await fetch(BACKEND_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
@@ -886,7 +949,14 @@ button.action-btn:hover{background:#10553b}
                         severity,
                         description,
                         damage_type: damageType,
-                        evidence_photos: [{ image_base64: imageBase64, detections: [] }]
+                        evidence_photos: [{
+                            image_base64: imageBase64,
+                            detections: manualDetections.map(d => ({
+                                label: d.label,
+                                confidence: d.confidence,
+                                boundingBox: d.boundingBox || null
+                            }))
+                        }]
                     })
                 });
                 const raw = await response.text();
@@ -896,11 +966,14 @@ button.action-btn:hover{background:#10553b}
                     throw new Error(result.message || raw.slice(0, 180) || ('HTTP ' + response.status));
                 }
                 status.textContent = 'Report sent successfully to admin · Status: Pending review.';
-                if (log) log.innerText = 'Manual report submitted: ' + damageType + '. The admin can review it in the reports panel.';
+                if (log) log.innerText = 'AI-classified report submitted: ' + damageType + '. The admin can review it in the reports panel.';
                 fileInput.value = '';
                 document.getElementById('manualEvidencePreview').style.display = 'none';
                 document.getElementById('manualEvidencePreview').removeAttribute('src');
                 document.getElementById('manualDescription').value = '';
+                manualDetections = [];
+                document.getElementById('manualAiResult').textContent = 'Select another photo to run AI damage classification.';
+                document.getElementById('manualAiDetections').textContent = '';
             } catch (error) {
                 status.textContent = 'Report not sent: ' + (error.message || 'Please try again.');
                 if (log) log.innerText = 'Manual report upload failed: ' + (error.message || 'Network error');
