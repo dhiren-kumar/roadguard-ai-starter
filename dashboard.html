@@ -277,7 +277,7 @@ button.action-btn:hover{background:#10553b}
         const DAMAGE_CLASSES = ['Longitudinal Crack', 'Transverse Crack', 'Alligator Crack', 'Pothole'];
         // Exact class order from Road Damage Detection India v7 data.yaml.
         const RFDETR_CLASSES = ['Alligator Crack', 'Longitudinal Crack', 'Normal Road', 'Open Manhole', 'Pothole', 'Transverse Crack'];
-        const RFDETR_IGNORED_CLASS_IDS = new Set([0, 2]); // Alligator has no train/valid/test labels yet; Normal Road is not damage
+        const RFDETR_IGNORED_CLASS_IDS = new Set([2]); // Ignore Normal Road only; retain Alligator Crack as a reportable class.
         let modelFamily = 'unknown';
 
         const BACKEND_URL = '/api/reports';
