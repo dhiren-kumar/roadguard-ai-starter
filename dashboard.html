@@ -327,7 +327,7 @@ button.action-btn:hover{background:#10553b}
                 aiBadge.innerText = 'Loading RoadGuard AI model…';
                 // Fetch the model explicitly so the contributor sees real download progress.
                 // force-cache reuses the server's 24-hour model cache on repeat visits.
-                const response = await fetch('./model/best.onnx', { cache: 'force-cache' });
+                const response = await fetch('./model/best.onnx?v=36mb-20261115', { cache: 'force-cache' });
                 if (!response.ok) throw new Error('Model download failed (HTTP ' + response.status + ').');
                 const total = Number(response.headers.get('content-length')) || 0;
                 let received = 0;
@@ -352,6 +352,15 @@ button.action-btn:hover{background:#10553b}
                     for (const chunk of chunks) { modelBytes.set(chunk, offset); offset += chunk.byteLength; }
                 } else {
                     modelBytes = new Uint8Array(await response.arrayBuffer());
+                }
+                // A Git LFS pointer is a tiny text file, not a usable ONNX model.
+                // Detect it here so deployment issues are reported clearly instead of a vague WASM error.
+                const headerText = new TextDecoder().decode(modelBytes.subarray(0, Math.min(modelBytes.length, 160)));
+                if (headerText.startsWith('version https://git-lfs.github.com/spec/')) {
+                    throw new Error('The server returned a Git LFS pointer instead of the 36 MB ONNX model. Upload the actual model/best.onnx file to the deployment.');
+                }
+                if (modelBytes.byteLength < 1024 * 1024) {
+                    throw new Error('The downloaded model is unexpectedly small (' + modelBytes.byteLength + ' bytes). Check model/best.onnx in the deployed build.');
                 }
                 aiBadge.innerText = 'Initializing AI in device RAM…';
                 const captureStatus = document.getElementById('captureStatus');
