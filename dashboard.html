@@ -20,7 +20,8 @@
         }
         .header { 
             width: 100%; 
-            max-width: 440px; 
+            max-width: 1180px; 
+            grid-column: 1 / -1;
             display: flex; 
             justify-content: space-between; 
             align-items: center; 
@@ -42,7 +43,8 @@
             padding: 1.5rem; 
             border-radius: 8px; 
             width: 100%; 
-            max-width: 440px; 
+            max-width: none; 
+            min-width: 0;
             box-sizing: border-box; 
             border: 1px solid #334155; 
             margin-top: 20px; 
@@ -52,16 +54,19 @@
         #scannerContainer { 
             display: none; 
             width: 100%; 
-            max-width: 440px; 
-            flex-direction: column; 
-            align-items: center; 
+            max-width: 1180px; 
+            display: grid;
+            grid-template-columns: minmax(0, 1.1fr) minmax(360px, .9fr);
+            align-items: start;
+            gap: 18px; 
             box-sizing: border-box;
         }
         .vid-box { 
             position: relative;
             width: 100%; 
-            max-width: 440px; 
-            margin-bottom: 15px; 
+            max-width: none; 
+            min-width: 0;
+            margin-bottom: 0; 
             box-sizing: border-box;
         }
         video, canvas { 
@@ -169,6 +174,14 @@ button.action-btn{background:#176b4b;border-radius:8px}
 button.action-btn:hover{background:#10553b}
 .ai-badge{background:#e9f4ed;border:1px solid #cfe2d4;color:#176b4b;border-radius:8px}
 .log{background:#f2f6f2;color:#405449;border:1px solid #e4ebe6;border-radius:8px}
+
+@media (max-width: 760px) {
+  #scannerContainer { grid-template-columns: minmax(0, 1fr); max-width: 560px; }
+  #scannerContainer > .header { grid-column: 1; }
+  #scannerContainer > .vid-box { grid-column: 1; }
+  #scannerContainer > .panel { grid-column: 1; }
+  #cam { height: min(48vh, 380px); min-height: 210px; }
+}
 </style>
 </head>
 <body>
@@ -187,8 +200,7 @@ button.action-btn:hover{background:#10553b}
         <a href="index.html" class="back-btn" style="display:block;text-align:center;margin-top:15px;background:transparent;color:#64748b;">← Back to Map</a>
     </div>
 
-    <div id="scannerContainer">
-        <div class="header">
+    <div id="scannerContainer">        <div class="header">
             <div>
                 <h3 style="margin:0;" id="welcomeHeader">Multi-Damage Scanner</h3>
                 <small id="userMeta" style="color:#94a3b8;"></small>
@@ -286,7 +298,7 @@ button.action-btn:hover{background:#10553b}
             };
             if (!contributor.name || !contributor.phone) return;
             document.getElementById('onboardModal').style.display = 'none';
-            document.getElementById('scannerContainer').style.display = 'flex';
+            document.getElementById('scannerContainer').style.display = 'grid';
             document.getElementById('welcomeHeader').innerText = `Welcome, ${contributor.name}`;
             document.getElementById('userMeta').innerText = contributor.phone;
             updateLocalStorageCount();
@@ -377,7 +389,6 @@ button.action-btn:hover{background:#10553b}
                 if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
                     throw new Error('This browser does not support camera access. Open RoadGuard in the latest Chrome browser.');
                 }
-
                 // Prefer the rear camera, but do not require an exact device match:
                 // Android devices often reject exact environment constraints.
                 const preferredConstraints = {
@@ -568,7 +579,6 @@ button.action-btn:hover{background:#10553b}
                 if (boxDims[2] !== 4 || classSlots !== RFDETR_CLASSES.length + 1 || logitDims[1] !== queryCount) {
                     throw new Error('RF-DETR output does not match the six-class RoadGuard v7 model.');
                 }
-
                 const boxes = boxesTensor.data;
                 const logits = logitsTensor.data;
                 const detections = [];
@@ -757,8 +767,7 @@ button.action-btn:hover{background:#10553b}
             if (autoReportBusy || !contributor || !Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) return;
             const now = Date.now();
             const types = [...new Set(detections.map(d => d.label).filter(Boolean))].sort();
-            const signature = types.join('|');
-            if (now - lastAutoReportAt < AUTO_REPORT_COOLDOWN_MS) return;
+            const signature = types.join('|');            if (now - lastAutoReportAt < AUTO_REPORT_COOLDOWN_MS) return;
             if (signature === lastAutoReportSignature && now - lastAutoReportAt < AUTO_REPORT_COOLDOWN_MS * 2) return;
 
             const evidence = captureAutoEvidence(detections);
@@ -948,105 +957,3 @@ button.action-btn:hover{background:#10553b}
                 return;
             }
             if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
-                status.textContent = 'Waiting for GPS. Allow location permission or move outdoors and try again.';
-                return;
-            }
-            button.disabled = true;
-            button.textContent = 'Sending report…';
-            status.textContent = 'Uploading ' + capturedEvidence.length + ' evidence image(s) to admin…';
-            try {
-                const allDetections = capturedEvidence.flatMap(p => p.detections || []);
-                const damageTypes = [...new Set(allDetections.map(d => d.label).filter(Boolean))];
-                const damageType = damageTypes.length ? damageTypes.join(', ') : 'AI review required - unclassified road damage';
-                const description = document.getElementById('manualDescription').value.trim() ||
-                    (damageTypes.length
-                        ? 'Automatically classified by RoadGuard AI. Damage type(s): ' + damageType + '. Evidence images: ' + capturedEvidence.length + '.'
-                        : 'No confident AI class detected. Please review all submitted evidence images.');
-                const response = await fetch(BACKEND_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                    body: JSON.stringify({
-                        contributor_name: contributor.name,
-                        contributor_phone: contributor.phone,
-                        contributor_email: contributor.email || '',
-                        contributor_location: contributor.locationText || '',
-                        location_name: document.getElementById('reportLocationName').value.trim(),
-                        latitude: coords.lat,
-                        longitude: coords.lng,
-                        severity: document.getElementById('manualSeverity').value,
-                        description,
-                        damage_type: damageType,
-                        evidence_photos: capturedEvidence.map(p => ({
-                            image_base64: p.image_base64,
-                            detections: p.detections
-                        }))
-                    })
-                });
-                const raw = await response.text();
-                let result = {};
-                try { result = raw ? JSON.parse(raw) : {}; } catch (_) {}
-                if (!response.ok || !result.success) throw new Error(result.message || raw.slice(0, 200) || ('HTTP ' + response.status));
-                status.textContent = 'Report sent successfully to admin · Pending review.';
-                if (log) log.innerText = 'Report submitted: ' + damageType + ' · ' + capturedEvidence.length + ' evidence image(s).';
-                capturedEvidence = [];
-                document.getElementById('reportLocationName').value = '';
-                document.getElementById('manualSeverity').value = 'medium';
-                document.getElementById('manualDescription').value = '';
-                renderCapturedEvidence();
-                document.getElementById('captureStatus').textContent = 'Ready for a new report. Capture the next road damage image.';
-                status.textContent = 'Report sent successfully. Dashboard reset and ready for a new report.';
-                aiBadge.innerText = 'RoadGuard AI ready · loaded in local RAM';
-            } catch (error) {
-                status.textContent = 'Report not sent: ' + (error.message || 'Please try again.');
-                if (log) log.innerText = 'Report upload failed: ' + (error.message || 'Network error');
-                button.disabled = capturedEvidence.length === 0;
-            } finally {
-                button.textContent = 'Send Report to Admin';
-                renderCapturedEvidence();
-            }
-        }
-
-        function startAutoDetectionLoop() {
-            // Intentionally disabled: contributors capture evidence manually and submit only on button tap.
-            if (autoReportTimer) { clearInterval(autoReportTimer); autoReportTimer = null; }
-        }
-        /* Legacy live auto-detection loop removed: manual capture is the only reporting trigger.
-        function startAutoDetectionLoop() {
-            if (autoReportTimer) clearInterval(autoReportTimer);
-            autoReportTimer = setInterval(async () => {
-                if (isScanning) return;
-                isScanning = true;
-                try {
-                    const detectedList = await analyzeFrameForMultipleDamages();
-                    const reportable = detectedList.filter(d => (d.confidence || 0) >= AUTO_REPORT_CONFIDENCE);
-                    if (reportable.length > 0) {
-                        latestDetections = reportable;
-                        autoDetectionStreak++;
-                        drawLiveBoundingBoxes(reportable);
-                        aiBadge.innerText = 'Detected ' + reportable.length + ' road damage(s)';
-                        const status = document.getElementById('autoReportStatus');
-                        if (status && !autoReportBusy) status.textContent = 'Road damage detected · confirming consecutive frames (' + autoDetectionStreak + '/' + AUTO_REPORT_MIN_STREAK + ')';
-                        if (autoDetectionStreak >= AUTO_REPORT_MIN_STREAK) {
-                            await submitAutomaticRoadReport(reportable);
-                            autoDetectionStreak = 0;
-                        }
-                    } else {
-                        latestDetections = [];
-                        autoDetectionStreak = 0;
-                        drawLiveBoundingBoxes([]);
-                        aiBadge.innerText = 'Scanning road automatically…';
-                        const status = document.getElementById('autoReportStatus');
-                        if (status && !autoReportBusy) status.textContent = 'No reportable damage detected · automatic scanning is active.';
-                    }
-                } catch (error) {
-                    console.error('RoadGuard detection error:', error);
-                    aiBadge.innerText = 'AI detection error: ' + error.message;
-                } finally {
-                    isScanning = false;
-                }
-            }, 2500);
-        }
-        */
-    </script>
-</body>
-</html>
