@@ -227,8 +227,11 @@ button.action-btn:hover{background:#10553b}
         let latestDetections = [];
         let activeReportSession = null;
         const MAX_EVIDENCE_PHOTOS = 5;
-        const MODEL_SIZE = 640;
-        const DAMAGE_CLASSES = ['Longitudinal Crack', 'Transverse Crack', 'Alligator Crack', 'Pothole'];
+        let MODEL_SIZE = 640;
+        const LEGACY_DAMAGE_CLASSES = ['Longitudinal Crack', 'Transverse Crack', 'Alligator Crack', 'Pothole'];
+        let modelClassNames = LEGACY_DAMAGE_CLASSES;
+        let modelFormat = 'yolo';
+        let modelMetadata = null;
 
         const BACKEND_URL = '/api/reports';
 
@@ -309,12 +312,38 @@ button.action-btn:hover{background:#10553b}
                 video.srcObject = stream;
                 video.onloadeddata = async () => {
                     try {
-                        ortSession = await ort.InferenceSession.create('./model/best.onnx', { executionProviders: ['wasm'] });
-                        aiBadge.innerText = 'Edge AI Ready: Scanning multi-damages locally';
+                        const metadataResponse = await fetch('./model/roadguard-rfdetr-medium.metadata.json', { cache: 'no-store' });
+                        if (!metadataResponse.ok) throw new Error('RF-DETR metadata is not installed yet.');
+                        const metadata = await metadataResponse.json();
+                        if (metadata.classOrderVerified !== true) {
+                            throw new Error('RF-DETR class order has not been verified against version 7 data.yaml.');
+                        }
+                        if (!Array.isArray(metadata.classNames) || metadata.classNames.length !== 6) {
+                            throw new Error('RF-DETR metadata must contain exactly six class names.');
+                        }
+                        const rfdetrSession = await ort.InferenceSession.create('./model/roadguard-rfdetr-medium.onnx', { executionProviders: ['wasm'] });
+                        modelMetadata = metadata;
+                        MODEL_SIZE = Number(metadata.inputSize) || 560;
+                        modelClassNames = metadata.classNames;
+                        modelFormat = 'rfdetr';
+                        ortSession = rfdetrSession;
+                        aiBadge.innerText = 'RF-DETR Medium ready · six classes · local inference';
                         startAutoDetectionLoop();
-                    } catch (err) {
-                        console.error(err);
-                        aiBadge.innerText = 'AI Error: Ensure /model/best.onnx is uploaded.';
+                    } catch (rfdetrError) {
+                        console.warn('RF-DETR is not active; trying the existing ONNX backup:', rfdetrError);
+                        try {
+                            ortSession = await ort.InferenceSession.create('./model/best.onnx', { executionProviders: ['wasm'] });
+                            modelFormat = 'yolo';
+                            modelClassNames = LEGACY_DAMAGE_CLASSES;
+                            MODEL_SIZE = 640;
+                            aiBadge.innerText = 'Legacy ONNX backup active · RF-DETR export pending';
+                            if (log) log.innerText = 'RF-DETR is not enabled: ' + rfdetrError.message + ' The previous model remains available.';
+                            startAutoDetectionLoop();
+                        } catch (legacyError) {
+                            console.error('Both model loads failed:', rfdetrError, legacyError);
+                            aiBadge.innerText = 'AI Error: no usable ONNX model found.';
+                            if (log) log.innerText = 'RF-DETR: ' + rfdetrError.message + ' · Backup: ' + legacyError.message;
+                        }
                     }
                 };
             } catch (err) {
@@ -355,6 +384,71 @@ button.action-btn:hover{background:#10553b}
             return kept.sort((a, b) => b.confidence - a.confidence).slice(0, 100);
         }
 
+        function sigmoid(value) {
+            const clipped = Math.max(-88, Math.min(88, Number(value)));
+            return 1 / (1 + Math.exp(-clipped));
+        }
+
+        async function decodeRfdetrResults(results) {
+            const names = ortSession.outputNames || [];
+            const boxesName = names.find(name => name.toLowerCase().includes('dets'));
+            const logitsName = names.find(name => name.toLowerCase().includes('labels'));
+            if (!boxesName || !logitsName) {
+                throw new Error('RF-DETR outputs must be named dets and labels. Found: ' + names.join(', '));
+            }
+            const boxesTensor = results[boxesName];
+            const logitsTensor = results[logitsName];
+            const boxDims = boxesTensor?.dims || [];
+            const logitDims = logitsTensor?.dims || [];
+            if (boxDims.length !== 3 || logitDims.length !== 3 || boxDims[0] !== 1 || logitDims[0] !== 1) {
+                throw new Error('Unexpected RF-DETR output ranks. Boxes: [' + boxDims.join(',') + '], logits: [' + logitDims.join(',') + ']');
+            }
+            const queryCount = boxDims[1];
+            const slots = logitDims[2];
+            const backgroundIndex = Number.isInteger(modelMetadata?.backgroundClassId) ? modelMetadata.backgroundClassId : -1;
+            const normalizedBackgroundIndex = backgroundIndex < 0 ? slots + backgroundIndex : backgroundIndex;
+            const foregroundIndices = Array.from({ length: slots }, (_, i) => i).filter(i => i !== normalizedBackgroundIndex);
+            if (foregroundIndices.length !== modelClassNames.length || boxDims[2] !== 4 || logitDims[1] !== queryCount) {
+                throw new Error('RF-DETR output class count does not match the six-class metadata.');
+            }
+            const threshold = Number(modelMetadata?.confidenceThreshold) || 0.45;
+            const detections = [];
+            for (let query = 0; query < queryCount; query++) {
+                let bestScore = 0;
+                let bestClass = -1;
+                for (const classIndex of foregroundIndices) {
+                    const score = sigmoid(logitsTensor.data[query * slots + classIndex]);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestClass = classIndex;
+                    }
+                }
+                if (bestClass < 0 || bestScore < threshold) continue;
+                const offset = query * 4;
+                const cx = Number(boxesTensor.data[offset]);
+                const cy = Number(boxesTensor.data[offset + 1]);
+                const width = Number(boxesTensor.data[offset + 2]);
+                const height = Number(boxesTensor.data[offset + 3]);
+                if (![cx, cy, width, height].every(Number.isFinite) || width <= 0 || height <= 0) continue;
+                const x1 = Math.max(0, Math.min(MODEL_SIZE, (cx - width / 2) * MODEL_SIZE));
+                const y1 = Math.max(0, Math.min(MODEL_SIZE, (cy - height / 2) * MODEL_SIZE));
+                const x2 = Math.max(0, Math.min(MODEL_SIZE, (cx + width / 2) * MODEL_SIZE));
+                const y2 = Math.max(0, Math.min(MODEL_SIZE, (cy + height / 2) * MODEL_SIZE));
+                if (x2 <= x1 || y2 <= y1) continue;
+                detections.push({
+                    label: modelClassNames[bestClass],
+                    confidence: bestScore,
+                    x1, y1, x2, y2,
+                    boundingBox: {
+                        x: x1 / MODEL_SIZE, y: y1 / MODEL_SIZE,
+                        width: (x2 - x1) / MODEL_SIZE, height: (y2 - y1) / MODEL_SIZE
+                    }
+                });
+            }
+            // DETR is set-based; do not apply YOLO-style NMS to its query outputs.
+            return detections.sort((a, b) => b.confidence - a.confidence).slice(0, 100);
+        }
+
         async function analyzeFrameForMultipleDamages() {
             if (!ortSession || !video || video.readyState < 2) return [];
             const offscreen = document.createElement('canvas');
@@ -365,18 +459,22 @@ button.action-btn:hover{background:#10553b}
             const { data } = ctx.getImageData(0, 0, MODEL_SIZE, MODEL_SIZE);
             const floatData = new Float32Array(3 * MODEL_SIZE * MODEL_SIZE);
             const area = MODEL_SIZE * MODEL_SIZE;
+            const mean = modelFormat === 'rfdetr' ? [0.485, 0.456, 0.406] : [0, 0, 0];
+            const std = modelFormat === 'rfdetr' ? [0.229, 0.224, 0.225] : [1, 1, 1];
             for (let i = 0; i < area; i++) {
-                floatData[i] = data[i * 4] / 255;
-                floatData[i + area] = data[i * 4 + 1] / 255;
-                floatData[i + 2 * area] = data[i * 4 + 2] / 255;
+                floatData[i] = (data[i * 4] / 255 - mean[0]) / std[0];
+                floatData[i + area] = (data[i * 4 + 1] / 255 - mean[1]) / std[1];
+                floatData[i + 2 * area] = (data[i * 4 + 2] / 255 - mean[2]) / std[2];
             }
             const inputTensor = new ort.Tensor('float32', floatData, [1, 3, MODEL_SIZE, MODEL_SIZE]);
             const results = await ortSession.run({ [ortSession.inputNames[0]]: inputTensor });
+            if (modelFormat === 'rfdetr') return decodeRfdetrResults(results);
+
             const outputTensor = results[ortSession.outputNames[0]];
             const output = outputTensor.data;
             const dims = outputTensor.dims || [];
-            const featureCount = DAMAGE_CLASSES.length + 4;
-            const featureCountWithObjectness = DAMAGE_CLASSES.length + 5;
+            const featureCount = LEGACY_DAMAGE_CLASSES.length + 4;
+            const featureCountWithObjectness = LEGACY_DAMAGE_CLASSES.length + 5;
             let rows, featureAt;
             if (dims.length === 3 && (dims[1] === featureCount || dims[1] === featureCountWithObjectness)) {
                 rows = dims[2];
@@ -385,7 +483,7 @@ button.action-btn:hover{background:#10553b}
                 rows = dims[1];
                 featureAt = (row, feature) => output[row * dims[2] + feature];
             } else {
-                throw new Error('Unsupported YOLO output shape: [' + dims.join(', ') + ']. Expected 4 box values plus 4 classes, optionally with objectness.');
+                throw new Error('Unsupported legacy YOLO output shape: [' + dims.join(', ') + '].');
             }
             const hasObjectness = (dims[1] === featureCountWithObjectness || dims[2] === featureCountWithObjectness);
             const classOffset = hasObjectness ? 5 : 4;
@@ -397,15 +495,13 @@ button.action-btn:hover{background:#10553b}
                 const height = Number(featureAt(row, 3));
                 if (![cx, cy, width, height].every(Number.isFinite) || width <= 0 || height <= 0) continue;
                 let classScore = 0, classIndex = 0;
-                for (let cls = 0; cls < DAMAGE_CLASSES.length; cls++) {
+                for (let cls = 0; cls < LEGACY_DAMAGE_CLASSES.length; cls++) {
                     const score = Number(featureAt(row, classOffset + cls));
                     if (score > classScore) { classScore = score; classIndex = cls; }
                 }
                 const objectness = hasObjectness ? Number(featureAt(row, 4)) : 1;
                 const confidence = classScore * (Number.isFinite(objectness) ? objectness : 0);
                 if (confidence < 0.60) continue;
-                // Most YOLO ONNX exports return xywh in 640-pixel input coordinates;
-                // exports returning normalized values are handled as well.
                 const scale = Math.max(Math.abs(cx), Math.abs(cy), width, height) <= 2 ? MODEL_SIZE : 1;
                 const x1 = Math.max(0, Math.min(MODEL_SIZE, (cx - width / 2) * scale));
                 const y1 = Math.max(0, Math.min(MODEL_SIZE, (cy - height / 2) * scale));
@@ -413,9 +509,8 @@ button.action-btn:hover{background:#10553b}
                 const y2 = Math.max(0, Math.min(MODEL_SIZE, (cy + height / 2) * scale));
                 if (x2 <= x1 || y2 <= y1) continue;
                 candidates.push({
-                    label: DAMAGE_CLASSES[classIndex],
-                    confidence,
-                    x1, y1, x2, y2,
+                    label: LEGACY_DAMAGE_CLASSES[classIndex],
+                    confidence, x1, y1, x2, y2,
                     boundingBox: {
                         x: x1 / MODEL_SIZE, y: y1 / MODEL_SIZE,
                         width: (x2 - x1) / MODEL_SIZE, height: (y2 - y1) / MODEL_SIZE
@@ -439,8 +534,9 @@ button.action-btn:hover{background:#10553b}
                 const y = d.boundingBox.y * bboxOverlay.height;
                 const w = d.boundingBox.width * bboxOverlay.width;
                 const h = d.boundingBox.height * bboxOverlay.height;
-                bboxContext.strokeStyle = '#ef4444';
-                bboxContext.fillStyle = '#ef4444';
+                const boxColor = d.label === 'Normal Road' ? '#16a34a' : '#ef4444';
+                bboxContext.strokeStyle = boxColor;
+                bboxContext.fillStyle = boxColor;
                 bboxContext.strokeRect(x, y, w, h);
                 const tag = d.label + ' ' + Math.round(d.confidence * 100) + '%';
                 const tagWidth = bboxContext.measureText(tag).width + 10;
@@ -460,23 +556,19 @@ button.action-btn:hover{background:#10553b}
                 try { detectedList = await analyzeFrameForMultipleDamages(); }
                 catch (error) { console.error('YOLO decode error:', error); aiBadge.innerText = 'AI output format error: ' + error.message; drawLiveBoundingBoxes([]); isScanning = false; return; }
                 if (detectedList.length > 0) {
-                    const count = detectedList.length;
-                    let severity = 'Normal Damage';
-                    if (count > 10) {
-                        severity = 'High Red Severity';
-                    } else if (count > 4) {
-                        severity = 'Medium';
-                    }
-
-                    aiBadge.innerText = `Detected ${count} damages (${severity})`;
-
+                    const damageCount = detectedList.filter(d => d.label !== 'Normal Road').length;
+                    const normalRoadDetected = detectedList.some(d => d.label === 'Normal Road');
+                    const severity = damageCount > 10 ? 'High' : damageCount > 4 ? 'Medium' : damageCount > 0 ? 'Low' : 'No damage';
+                    aiBadge.innerText = damageCount > 0
+                        ? `Detected ${damageCount} road damage(s) · ${severity} severity`
+                        : (normalRoadDetected ? 'Normal Road detected · no damage found' : 'No road condition detected');
                     latestDetections = detectedList;
                     drawLiveBoundingBoxes(detectedList);
-                    if (activeReportSession) document.getElementById("sessionStatus").textContent = "Active report · " + activeReportSession.photos.length + "/5 photos · " + count + " detection(s) in current frame.";
+                    if (activeReportSession) document.getElementById("sessionStatus").textContent = "Active report · " + activeReportSession.photos.length + "/5 photos · " + damageCount + " damage detection(s) in current frame.";
                 } else {
                     latestDetections = [];
                     drawLiveBoundingBoxes([]);
-                    aiBadge.innerText = 'Scanning road locally... (Clear)';
+                    aiBadge.innerText = 'Scanning road locally... (No detection)';
                 }
 
                 setTimeout(() => { isScanning = false; }, 4000);
@@ -547,14 +639,16 @@ button.action-btn:hover{background:#10553b}
             if (!activeReportSession) return;
             if (!activeReportSession.photos.length) return alert('Capture at least one evidence photo first.');
             const all = activeReportSession.photos.flatMap(p => p.detections);
-            const types = [...new Set(all.map(d => d.label).filter(Boolean))];
-            const total = all.length;
+            const damageDetections = all.filter(d => d.label && d.label !== 'Normal Road');
+            const types = [...new Set(damageDetections.map(d => d.label))];
+            const normalRoadDetected = all.some(d => d.label === 'Normal Road');
+            const damageTotal = damageDetections.length;
             const report = {
                 ...activeReportSession,
-                damage_type: types.join(', ') || 'Road damage',
-                damage_count: total,
-                severity: total > 10 ? 'high' : total > 4 ? 'medium' : 'low',
-                description: 'One road incident with ' + activeReportSession.photos.length + ' evidence photo(s) and ' + total + ' AI detection(s).'
+                damage_type: types.join(', ') || (normalRoadDetected ? 'Normal Road' : 'Road damage'),
+                damage_count: damageTotal,
+                severity: damageTotal > 10 ? 'high' : damageTotal > 4 ? 'medium' : 'low',
+                description: 'One road incident with ' + activeReportSession.photos.length + ' evidence photo(s), ' + damageTotal + ' AI damage detection(s)' + (normalRoadDetected ? ', and a Normal Road classification' : '') + '.'
             };
             const saved = JSON.parse(localStorage.getItem('roadguard_local_reports') || '[]');
             saved.push(report);
