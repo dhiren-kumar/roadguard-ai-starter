@@ -272,11 +272,27 @@ button.action-btn:hover{background:#10553b}
                 document.getElementById('userMeta').innerText = contributor.phone;
                 updateLocalStorageCount();
                 const status = document.getElementById('autoReportStatus');
-                if (status) status.textContent = 'Opening live camera and loading RoadGuard AI into device RAM…';
-                initGPS();
-                aiBadge.innerText = 'Camera not started · AI not loaded';
+                if (status) status.textContent = 'Requesting camera and location permissions, while loading RoadGuard AI into device RAM…';
                 const captureStatus = document.getElementById('captureStatus');
-                if (captureStatus) captureStatus.textContent = 'Tap Start Camera. If live preview does not open, use Use Phone Camera (fallback). AI will not load automatically.';
+                if (captureStatus) captureStatus.textContent = 'Starting camera and AI together. Allow camera and location permissions when your browser asks.';
+                // Start all three tasks immediately after contributor sign-in. Do not wait
+                // for the camera or GPS before downloading and initializing the AI model.
+                initGPS();
+                const cameraTask = initCameraOnly();
+                const modelTask = loadRoadGuardModel();
+                Promise.allSettled([cameraTask, modelTask]).then(results => {
+                    const cameraResult = results[0];
+                    const modelResult = results[1];
+                    if (status) {
+                        const cameraText = cameraResult.status === 'fulfilled' ? 'Camera started' : 'Camera needs permission / retry';
+                        const modelText = modelResult.status === 'fulfilled' ? 'AI model loaded in device RAM' : 'AI model failed to load: ' + (modelResult.reason?.message || 'unknown error');
+                        status.textContent = cameraText + ' · ' + modelText;
+                    }
+                    if (modelResult.status === 'rejected') {
+                        console.error('RoadGuard AI startup failed:', modelResult.reason);
+                        aiBadge.innerText = 'AI model unavailable · ' + (modelResult.reason?.message || 'Please retry');
+                    }
+                });
             } catch (error) {
                 sessionStorage.removeItem('roadguard_contributor');
                 window.location.replace('contributor.html');
