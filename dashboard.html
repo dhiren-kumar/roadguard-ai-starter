@@ -185,12 +185,13 @@ button.action-btn:hover{background:#10553b}
         </div>
 
         <div class="panel">
-            <div class="ai-badge" id="aiBadge">Edge AI: Loading model into device RAM...</div>
+            <div class="ai-badge" id="aiBadge">Camera: starting independently · AI not loaded</div>
             <div style="margin:12px 0;padding:14px;background:#f2f6f2;border:1px solid #dce5de;border-radius:10px;color:#405449">
                 <strong>Road Damage Capture</strong>
-                <p style="font-size:13px;margin:6px 0 10px">Keep the live camera open. Capture each damaged area; RoadGuard AI analyzes every captured image automatically.</p>
-                <div id="captureStatus" role="status" aria-live="polite" style="font-size:13px;margin:10px 0;color:#405449">⏳ Loading RoadGuard AI into device RAM…</div>
-                <button class="action-btn" id="captureImageBtn" type="button" onclick="captureAndAnalyzeImage()" disabled style="width:100%;margin:4px 0 12px;opacity:.55">📷 Capture Photo & Detect Damage</button>
+                <p style="font-size:13px;margin:6px 0 10px">Camera works independently. Capture a road photo immediately; load AI only if you want optional on-device analysis.</p>
+                <div id="captureStatus" role="status" aria-live="polite" style="font-size:13px;margin:10px 0;color:#405449">Opening camera…</div>
+                <button class="action-btn" id="captureImageBtn" type="button" onclick="captureAndAnalyzeImage()" disabled style="width:100%;margin:4px 0 8px;opacity:.55">📷 Capture Photo</button>
+                <button class="action-btn" id="analyzeCapturedImagesBtn" type="button" onclick="analyzeCapturedImagesWithAI()" disabled style="background:#2563eb;margin:4px 0 12px">Optional: Load AI & Analyze Photos</button>
                 <div id="capturedEvidenceList" style="display:grid;gap:12px;margin:10px 0"></div>
                 <div id="captureCount" style="font-size:13px;color:#64748b;margin:8px 0">Captured images: 0 / 5</div>
                 <label for="manualSeverity">Report severity</label>
@@ -220,7 +221,7 @@ button.action-btn:hover{background:#10553b}
         </div>
     </div>
 
-        <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+        <script defer src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <script>
         let contributor = null;
         const video = document.getElementById('cam');
@@ -270,7 +271,7 @@ button.action-btn:hover{background:#10553b}
                 const status = document.getElementById('autoReportStatus');
                 if (status) status.textContent = 'Opening live camera and loading RoadGuard AI into device RAM…';
                 initGPS();
-                initCameraAndModel();
+                initCameraOnly();
             } catch (error) {
                 sessionStorage.removeItem('roadguard_contributor');
                 window.location.replace('contributor.html');
@@ -380,126 +381,64 @@ button.action-btn:hover{background:#10553b}
             catch (error) { modelLoadPromise = null; throw error; }
         }
 
-        async function initCameraAndModel() {
+        async function initCameraOnly() {
             if (cameraStarting) return;
             cameraStarting = true;
-
-            aiBadge.innerText = 'Opening phone camera and preparing AI…';
+            aiBadge.innerText = 'Camera: opening…';
+            const captureStatus = document.getElementById('captureStatus');
+            if (captureStatus) captureStatus.textContent = 'Opening camera. AI model is not required for camera capture.';
             if (log) log.innerText = 'Requesting camera permission. Please allow camera access.';
-
             try {
-                if (!window.isSecureContext) {
-                    throw new Error('Camera access requires HTTPS. Open the secure https:// RoadGuard website.');
-                }
+                if (!window.isSecureContext) throw new Error('Camera access requires HTTPS. Open the secure https:// RoadGuard website.');
                 if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
                     throw new Error('This browser does not support camera access. Open RoadGuard in the latest Chrome browser.');
                 }
-                // Prefer the rear camera, but do not require an exact device match:
-                // Android devices often reject exact environment constraints.
-                const preferredConstraints = {
-                    audio: false,
-                    video: {
-                        facingMode: { ideal: 'environment' },
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
-                };
-
+                const constraints = { audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } };
                 try {
-                    cameraStream = await navigator.mediaDevices.getUserMedia(preferredConstraints);
+                    cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
                 } catch (preferredError) {
-                    console.warn('Preferred rear-camera request failed; trying browser default camera:', preferredError);
+                    console.warn('Rear camera request failed; trying default camera:', preferredError);
                     cameraStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
                 }
-
                 video.muted = true;
                 video.autoplay = true;
                 video.playsInline = true;
                 video.setAttribute('playsinline', '');
                 video.setAttribute('webkit-playsinline', '');
                 video.srcObject = cameraStream;
-
-                // Wait for real camera dimensions before starting inference.
-                if (video.readyState < HTMLMediaElement.HAVE_METADATA) {
-                    await new Promise((resolve, reject) => {
-                        const timeout = setTimeout(() => {
-                            cleanup();
-                            reject(new Error('Camera connected but no video frames arrived. Close other camera apps and try again.'));
-                        }, 12000);
-                        const onReady = () => { cleanup(); resolve(); };
-                        const onError = () => { cleanup(); reject(new Error('The camera stream could not be decoded by this browser.')); };
-                        function cleanup() {
-                            clearTimeout(timeout);
-                            video.removeEventListener('loadedmetadata', onReady);
-                            video.removeEventListener('error', onError);
-                        }
-                        video.addEventListener('loadedmetadata', onReady, { once: true });
-                        video.addEventListener('error', onError, { once: true });
-                    });
-                }
-
-                if (!video.videoWidth || !video.videoHeight) {
-                    throw new Error('Camera opened but returned an empty video frame. Restart the camera and try again.');
-                }
-
+                await new Promise((resolve, reject) => {
+                    if (video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth) return resolve();
+                    const timeout = setTimeout(() => cleanup(new Error('Camera connected but no video frames arrived. Close other camera apps and try again.')), 12000);
+                    const onReady = () => cleanup();
+                    const onError = () => cleanup(new Error('The camera stream could not be decoded by this browser.'));
+                    function cleanup(error) {
+                        clearTimeout(timeout);
+                        video.removeEventListener('loadedmetadata', onReady);
+                        video.removeEventListener('error', onError);
+                        error ? reject(error) : resolve();
+                    }
+                    video.addEventListener('loadedmetadata', onReady, { once: true });
+                    video.addEventListener('error', onError, { once: true });
+                });
                 await video.play();
-                // Some Android browsers resolve play() before the first camera frame is painted.
-                if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-                    await new Promise((resolve, reject) => {
-                        const timeout = setTimeout(() => {
-                            cleanup();
-                            reject(new Error('Camera opened but no live frames appeared. Allow camera permission and reopen the scanner.'));
-                        }, 10000);
-                        const onFrame = () => { cleanup(); resolve(); };
-                        function cleanup() {
-                            clearTimeout(timeout);
-                            video.removeEventListener('loadeddata', onFrame);
-                            video.removeEventListener('playing', onFrame);
-                        }
-                        video.addEventListener('loadeddata', onFrame, { once: true });
-                        video.addEventListener('playing', onFrame, { once: true });
-                    });
-                }
-                if (log) log.innerText = 'Camera preview active (' + video.videoWidth + ' × ' + video.videoHeight + '). Loading RoadGuard AI model…';
-                aiBadge.innerText = 'Camera active · Loading on-device AI model…';
-
-                aiBadge.innerText = 'Camera active · Loading RoadGuard AI into local RAM…';
-                if (log) log.innerText = 'Live camera is ready. Loading the ONNX model into this device memory…';
-                try {
-                    // Give camera startup priority; load the large AI model only after live video is ready.
-                    await loadRoadGuardModel();
-                    aiBadge.innerText = 'RoadGuard AI ready · loaded in local RAM';
-                    const captureStatus = document.getElementById('captureStatus');
-                    if (captureStatus) captureStatus.textContent = '✅ RoadGuard AI loaded in local RAM and ready. You can capture now.';
-                    const captureButton = document.getElementById('captureImageBtn');
-                    if (captureButton) { captureButton.disabled = false; captureButton.style.opacity = '1'; }
-                    if (log) log.innerText = 'Live camera and on-device AI are ready. Capture images manually to create a report.';
-                } catch (modelError) {
-                    aiBadge.innerText = 'Camera active · AI model failed to load';
-                    const captureStatus = document.getElementById('captureStatus');
-                    if (captureStatus) captureStatus.textContent = '⚠️ AI model did not load: ' + modelError.message + '. Capture is disabled until AI is ready.';
-                    const captureButton = document.getElementById('captureImageBtn');
-                    if (captureButton) { captureButton.disabled = true; captureButton.style.opacity = '.55'; }
-                    if (log) log.innerText = 'Live camera is available. Retry page refresh to load the AI model.';
-                }
-                const autoStatus = document.getElementById('autoReportStatus');
-                if (autoStatus) autoStatus.textContent = 'Manual capture mode · no report is sent until you tap Send Report to Admin.';
+                if (!video.videoWidth || !video.videoHeight) throw new Error('Camera opened but returned an empty video frame. Restart the camera and try again.');
+                aiBadge.innerText = 'Camera ready · AI loads only when requested';
+                if (captureStatus) captureStatus.textContent = '✅ Camera ready. Capture a photo now; you do not need to wait for AI.';
+                const captureButton = document.getElementById('captureImageBtn');
+                if (captureButton) { captureButton.disabled = false; captureButton.style.opacity = '1'; }
+                if (log) log.innerText = 'Live camera is ready. Capture a photo immediately. AI remains unloaded until you request analysis.';
             } catch (err) {
-                console.error('Camera / model initialization error:', err);
-                if (cameraStream) {
-                    cameraStream.getTracks().forEach(track => track.stop());
-                    cameraStream = null;
-                }
+                console.error('Camera initialization error:', err);
+                if (cameraStream) { cameraStream.getTracks().forEach(track => track.stop()); cameraStream = null; }
                 video.srcObject = null;
                 const message = err && err.name === 'NotAllowedError'
                     ? 'Camera permission denied. In Chrome, tap the site icon → Permissions → Camera → Allow, then reload.'
-                    : err && err.name === 'NotFoundError'
-                        ? 'No camera was found on this device.'
-                        : err && err.name === 'NotReadableError'
-                            ? 'The camera is busy in another app. Close other camera/video apps and retry.'
-                            : (err.message || 'Unable to start the camera.');
+                    : err && err.name === 'NotFoundError' ? 'No camera was found on this device.'
+                    : err && err.name === 'NotReadableError' ? 'The camera is busy in another app. Close other camera/video apps and retry.'
+                    : (err.message || 'Unable to start the camera.');
                 if (log) log.innerText = 'Camera unavailable: ' + message;
                 aiBadge.innerText = 'Camera unavailable · ' + message;
+                if (captureStatus) captureStatus.textContent = message;
             } finally {
                 cameraStarting = false;
             }
@@ -897,6 +836,8 @@ button.action-btn:hover{background:#10553b}
             });
             count.textContent = 'Captured images: ' + capturedEvidence.length + ' / 5';
             send.disabled = capturedEvidence.length === 0 || captureBusy;
+            const analyze = document.getElementById('analyzeCapturedImagesBtn');
+            if (analyze) analyze.disabled = capturedEvidence.length === 0 || captureBusy;
         }
 
         async function captureAndAnalyzeImage() {
@@ -904,54 +845,79 @@ button.action-btn:hover{background:#10553b}
             const status = document.getElementById('captureStatus');
             if (captureBusy) return;
             if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
-                status.textContent = 'Camera is not ready. Wait for the live preview and try again.';
+                status.textContent = 'Camera is not ready yet. Wait for the live preview and try again.';
                 return;
             }
             if (capturedEvidence.length >= 5) {
                 status.textContent = 'A report can contain up to five photos. Send this report or remove an image first.';
                 return;
             }
-            if (!ortSession) {
-                status.textContent = 'RoadGuard AI is still loading into local RAM. Please wait.';
-                try { await loadRoadGuardModel(); }
-                catch (error) { status.textContent = 'AI model failed to load: ' + error.message; return; }
-            }
             captureBusy = true;
             button.disabled = true;
-            button.textContent = 'Capturing & analyzing…';
-            status.textContent = 'Capturing camera frame and running on-device AI…';
+            button.textContent = 'Capturing…';
+            status.textContent = 'Capturing photo…';
             try {
                 const shot = document.createElement('canvas');
                 const scale = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
                 shot.width = Math.max(1, Math.round(video.videoWidth * scale));
                 shot.height = Math.max(1, Math.round(video.videoHeight * scale));
                 shot.getContext('2d').drawImage(video, 0, 0, shot.width, shot.height);
-                const detections = await analyzeFrameForMultipleDamages(shot);
-                const imageBase64 = shot.toDataURL('image/jpeg', 0.82);
+                const imageBase64 = shot.toDataURL('image/jpeg', 0.78);
                 if (imageBase64.length > 10 * 1024 * 1024) throw new Error('Captured image is too large. Try again.');
                 capturedEvidence.push({
                     image_base64: imageBase64,
-                    detections: detections.map(d => ({
-                        label: d.label,
-                        confidence: d.confidence,
-                        boundingBox: d.boundingBox || null
-                    })),
+                    detections: [],
                     captured_at: new Date().toISOString(),
                     latitude: Number.isFinite(coords.lat) ? coords.lat : null,
                     longitude: Number.isFinite(coords.lng) ? coords.lng : null
                 });
                 renderCapturedEvidence();
-                const types = [...new Set(detections.map(d => d.label))];
-                status.textContent = types.length
-                    ? 'AI detected ' + types.join(', ') + '. Capture another image or send the report to admin.'
-                    : 'No confident damage class detected in this image. It is retained as evidence for admin review.';
-                aiBadge.innerText = 'AI analysis complete · ' + capturedEvidence.length + ' image(s) captured';
+                status.textContent = '✅ Photo captured. You can capture more photos or send the report. AI analysis is optional.';
+                aiBadge.innerText = 'Camera ready · ' + capturedEvidence.length + ' photo(s) captured · AI not loaded';
             } catch (error) {
-                status.textContent = 'Capture/AI analysis failed: ' + (error.message || 'Unknown error');
+                status.textContent = 'Photo capture failed: ' + (error.message || 'Unknown error');
             } finally {
                 captureBusy = false;
-                button.disabled = false;
-                button.textContent = '📷 Capture Photo & Detect Damage';
+                button.disabled = !cameraStream;
+                button.textContent = '📷 Capture Photo';
+                renderCapturedEvidence();
+            }
+        }
+
+        async function analyzeCapturedImagesWithAI() {
+            const button = document.getElementById('analyzeCapturedImagesBtn');
+            const status = document.getElementById('captureStatus');
+            if (!capturedEvidence.length || captureBusy) return;
+            captureBusy = true;
+            button.disabled = true;
+            button.textContent = 'Loading AI and analyzing…';
+            try {
+                status.textContent = 'Loading AI model now. Camera preview remains open while this runs…';
+                await loadRoadGuardModel();
+                for (let i = 0; i < capturedEvidence.length; i++) {
+                    status.textContent = 'Analyzing captured photo ' + (i + 1) + ' of ' + capturedEvidence.length + '…';
+                    const img = new Image();
+                    img.src = capturedEvidence[i].image_base64;
+                    await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error('Could not read captured photo.')); });
+                    const shot = document.createElement('canvas');
+                    shot.width = img.naturalWidth;
+                    shot.height = img.naturalHeight;
+                    shot.getContext('2d').drawImage(img, 0, 0);
+                    const detections = await analyzeFrameForMultipleDamages(shot);
+                    capturedEvidence[i].detections = detections.map(d => ({
+                        label: d.label, confidence: d.confidence, boundingBox: d.boundingBox || null
+                    }));
+                }
+                renderCapturedEvidence();
+                aiBadge.innerText = 'AI analysis complete · ' + capturedEvidence.length + ' photo(s)';
+                status.textContent = '✅ AI analysis complete. Review the photos and send the report when ready.';
+            } catch (error) {
+                status.textContent = 'AI analysis unavailable: ' + (error.message || 'Unknown error') + '. Your captured photos are still saved in this report.';
+                aiBadge.innerText = 'Photos captured · AI unavailable';
+            } finally {
+                captureBusy = false;
+                button.disabled = capturedEvidence.length === 0;
+                button.textContent = 'Optional: Load AI & Analyze Photos';
                 renderCapturedEvidence();
             }
         }
@@ -962,9 +928,8 @@ button.action-btn:hover{background:#10553b}
             document.getElementById('manualSeverity').value = 'medium';
             document.getElementById('manualDescription').value = '';
             document.getElementById('manualReportStatus').textContent = 'Capture one or more images before sending.';
-            document.getElementById('captureStatus').textContent = ortSession
-                ? 'AI ready on this device. Tap Capture Image & Detect Damage to analyze a frame.'
-                : 'AI model is loading into local RAM…';
+            document.getElementById('captureStatus').textContent = 'Camera capture is ready independently. AI is optional and will load only if you tap Analyze.';
+            aiBadge.innerText = 'Camera ready · AI not loaded';
             renderCapturedEvidence();
         }
 
