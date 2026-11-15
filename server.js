@@ -43,7 +43,7 @@ app.use((req, res, next) => {
     }
     return next();
 });
-// Cache the large on-device AI model so repeat visits do not download ~129 MB again.
+// Cache the updated ~36 MB on-device ONNX model for repeat visits.
 app.use("/model", (req, res, next) => {
     res.setHeader("Cache-Control", "public, max-age=86400");
     next();
