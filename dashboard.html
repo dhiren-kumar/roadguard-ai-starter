@@ -38,20 +38,8 @@
             text-decoration: none; 
             font-size: 0.85rem; 
         }
-        #onboardModal { 
-            background: #1e293b; 
-            padding: 1.5rem; 
-            border-radius: 8px; 
-            width: 100%; 
-            max-width: 440px; 
-            box-sizing: border-box; 
-            border: 1px solid #334155; 
-            margin-top: 20px; 
-        }
-        #onboardModal h3 { margin-top: 0; color: #38bdf8; text-align: center; }
-        
         #scannerContainer { 
-            display: none; 
+            display: grid; 
             width: 100%; 
             max-width: 1180px; 
             display: grid;
@@ -163,8 +151,6 @@
 <link rel="stylesheet" href="css/style.css">
 <style>
 body{background:#f6f9f6;color:#17251f}
-#onboardModal,.panel{background:#fff;color:#17251f;border:1px solid #e4ebe6;border-radius:14px;box-shadow:0 10px 30px #183d2508}
-#onboardModal h3{color:#176b4b}
 .header small,.panel small{color:#6d7b74}
 .back-btn{background:#e9f4ed;color:#176b4b;border-radius:8px}
 video,canvas{border:1px solid #dce5de;background:#edf3ee;border-radius:12px}
@@ -185,20 +171,6 @@ button.action-btn:hover{background:#10553b}
 </head>
 <body>
 
-    <div id="onboardModal">
-        <h3>Contributor Details</h3>
-        <p style="font-size:0.85rem; color:#64748b; text-align:center;">Enter your details to start reporting. No account or password is needed.</p>
-        <form id="contributorForm">
-          <label for="contributorName">Full name</label><input id="contributorName" name="name" maxlength="100" required autocomplete="name" placeholder="Your full name">
-          <label for="contributorPhone">Phone number</label><input id="contributorPhone" name="phone" type="tel" maxlength="20" required autocomplete="tel" placeholder="Your contact number">
-          <label for="contributorEmail">Email (optional)</label><input id="contributorEmail" name="email" type="email" maxlength="254" autocomplete="email" placeholder="Your email address">
-          <label for="contributorLocation">Location (optional)</label><input id="contributorLocation" name="location" maxlength="200" placeholder="Area / city">
-          <button class="action-btn" type="submit">Continue to Road Scanner</button>
-        </form>
-        <p id="loginPrompt" role="status"></p>
-        <a href="index.html" class="back-btn" style="display:block;text-align:center;margin-top:15px;background:transparent;color:#64748b;">← Back to Map</a>
-    </div>
-
     <div id="scannerContainer">        <div class="header">
             <div>
                 <h3 style="margin:0;" id="welcomeHeader">Multi-Damage Scanner</h3>
@@ -215,18 +187,6 @@ button.action-btn:hover{background:#10553b}
 
         <div class="panel">
             <div class="ai-badge" id="aiBadge">Edge AI: Loading model into device RAM...</div>
-  <div id="gpsPanel" style="background:#f2f6f2;border:1px solid #dce5de;border-radius:8px;padding:12px;margin:10px 0;color:#405449;font-size:13px">
-    <strong>Live GPS</strong>
-    <div id="gpsStatus" role="status" style="margin-top:6px">Waiting for GPS permission…</div>
-    <div id="gpsPlace" style="margin-top:4px">GPS location will be attached automatically. Enter the road or nearby place name below.</div>
-  </div>
-  <div style="margin:10px 0;padding:12px;background:#f2f6f2;border:1px solid #dce5de;border-radius:8px;color:#405449;font-size:13px">
-    <strong>Report place name</strong>
-    <p style="margin:6px 0 10px">Enter the road name or a nearby place name. GPS coordinates are attached automatically for the map.</p>
-    <label for="reportLocationName" style="margin-top:10px">Road / nearby place name</label>
-    <input id="reportLocationName" type="text" maxlength="200" placeholder="e.g. Janpath Road, near XYZ School" style="margin-bottom:8px">
-  </div>
-
             <div style="margin:12px 0;padding:14px;background:#f2f6f2;border:1px solid #dce5de;border-radius:10px;color:#405449">
                 <strong>Road Damage Capture</strong>
                 <p style="font-size:13px;margin:6px 0 10px">Keep the live camera open. Capture each damaged area; RoadGuard AI analyzes every captured image automatically.</p>
@@ -244,6 +204,19 @@ button.action-btn:hover{background:#10553b}
                 <button class="action-btn" id="clearCurrentReportBtn" type="button" onclick="resetCurrentReport()" style="background:#64748b">Clear Current Report</button>
                 <div id="manualReportStatus" role="status" style="font-size:13px;margin-top:10px;color:#405449">Capture one or more images before sending.</div>
             </div>
+
+  <div id="gpsPanel" style="background:#f2f6f2;border:1px solid #dce5de;border-radius:8px;padding:12px;margin:10px 0;color:#405449;font-size:13px">
+    <strong>Live GPS</strong>
+    <div id="gpsStatus" role="status" style="margin-top:6px">Waiting for GPS permission…</div>
+    <div id="gpsPlace" style="margin-top:4px">GPS location will be attached automatically. Enter the road or nearby place name below.</div>
+  </div>
+  <div style="margin:10px 0;padding:12px;background:#f2f6f2;border:1px solid #dce5de;border-radius:8px;color:#405449;font-size:13px">
+    <strong>Report place name</strong>
+    <p style="margin:6px 0 10px">Enter the road name or a nearby place name. GPS coordinates are attached automatically for the map.</p>
+    <label for="reportLocationName" style="margin-top:10px">Road / nearby place name</label>
+    <input id="reportLocationName" type="text" maxlength="200" placeholder="e.g. Janpath Road, near XYZ School" style="margin-bottom:8px">
+  </div>
+
             <div class="log" id="logBox">Initializing GPS and Camera permissions...</div>
         </div>
     </div>
@@ -286,31 +259,25 @@ button.action-btn:hover{background:#10553b}
 
         const BACKEND_URL = '/api/reports';
 
-        function startContributorSession() {
-            const form = document.getElementById('contributorForm');
-            if (!form.reportValidity()) return;
-            contributor = {
-                name: document.getElementById('contributorName').value.trim(),
-                phone: document.getElementById('contributorPhone').value.trim(),
-                email: document.getElementById('contributorEmail').value.trim(),
-                locationText: document.getElementById('contributorLocation').value.trim()
-            };
-            if (!contributor.name || !contributor.phone) return;
-            document.getElementById('onboardModal').style.display = 'none';
-            document.getElementById('scannerContainer').style.display = 'grid';
-            document.getElementById('welcomeHeader').innerText = `Welcome, ${contributor.name}`;
-            document.getElementById('userMeta').innerText = contributor.phone;
-            updateLocalStorageCount();
-            const status = document.getElementById('autoReportStatus');
-            if (status) status.textContent = 'Opening live camera and loading RoadGuard AI into device RAM…';
-            initGPS();
-            initCameraAndModel();
+        const savedContributor = sessionStorage.getItem('roadguard_contributor');
+        if (!savedContributor) {
+            window.location.replace('contributor.html');
+        } else {
+            try {
+                contributor = JSON.parse(savedContributor);
+                if (!contributor || !contributor.name || !contributor.phone) throw new Error('Invalid contributor details');
+                document.getElementById('welcomeHeader').innerText = 'Welcome, ' + contributor.name;
+                document.getElementById('userMeta').innerText = contributor.phone;
+                updateLocalStorageCount();
+                const status = document.getElementById('autoReportStatus');
+                if (status) status.textContent = 'Opening live camera and loading RoadGuard AI into device RAM…';
+                initGPS();
+                initCameraAndModel();
+            } catch (error) {
+                sessionStorage.removeItem('roadguard_contributor');
+                window.location.replace('contributor.html');
+            }
         }
-
-        document.getElementById('contributorForm').addEventListener('submit', event => {
-            event.preventDefault();
-            startContributorSession();
-        });
 
         window.onload = () => updateLocalStorageCount();
 
