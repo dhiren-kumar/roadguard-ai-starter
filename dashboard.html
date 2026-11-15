@@ -216,7 +216,33 @@ button.action-btn:hover{background:#10553b}
     <input id="reportLocationName" type="text" maxlength="200" placeholder="e.g. Janpath Road, near XYZ School" style="margin-bottom:8px">
   </div>
 
-            <div id="autoReportStatus" class="ai-badge" style="margin:12px 0">Automatic road scanning will start when the camera and GPS are ready.</div>
+            <div style="margin:12px 0;padding:14px;background:#f2f6f2;border:1px solid #dce5de;border-radius:10px;color:#405449">
+                <strong>Manual Road Damage Report</strong>
+                <p style="font-size:13px;margin:6px 0 10px">Take a road photo or choose one from your gallery. Check the damage type and send it to the admin for review.</p>
+                <label for="manualEvidence">Road damage photo</label>
+                <input id="manualEvidence" type="file" accept="image/*" capture="environment" required style="margin-bottom:8px">
+                <img id="manualEvidencePreview" alt="Selected road evidence preview" style="display:none;width:100%;max-height:280px;object-fit:contain;border-radius:8px;margin:8px 0 12px">
+                <label for="manualDamageType">Damage type</label>
+                <select id="manualDamageType" style="width:100%;padding:11px;border:1px solid #dce5de;border-radius:8px;background:#fff;color:#17251f;margin-bottom:12px">
+                    <option value="Pothole">Pothole</option>
+                    <option value="Longitudinal Crack">Longitudinal Crack</option>
+                    <option value="Transverse Crack">Transverse Crack</option>
+                    <option value="Alligator Crack">Alligator Crack</option>
+                    <option value="Open Manhole">Open Manhole</option>
+                    <option value="Other road damage">Other road damage</option>
+                </select>
+                <label for="manualSeverity">Severity</label>
+                <select id="manualSeverity" style="width:100%;padding:11px;border:1px solid #dce5de;border-radius:8px;background:#fff;color:#17251f;margin-bottom:12px">
+                    <option value="low">Low</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                </select>
+                <label for="manualDescription">Description (optional)</label>
+                <textarea id="manualDescription" rows="3" maxlength="1000" placeholder="Describe the road damage or nearby landmark" style="width:100%;padding:11px;box-sizing:border-box;border:1px solid #dce5de;border-radius:8px;background:#fff;color:#17251f;margin-bottom:8px"></textarea>
+                <button class="action-btn" id="sendManualReportBtn" type="button" onclick="submitManualRoadReport()">Send Report to Admin</button>
+                <div id="manualReportStatus" role="status" style="font-size:13px;margin-top:10px;color:#405449">Your report will be sent to the admin as pending review.</div>
+            </div>
+            <div id="autoReportStatus" class="ai-badge" style="margin:12px 0">Manual reporting mode · AI detections will not be submitted automatically.</div>
             <div id="localCountInfo" style="font-size:0.85rem;color:#64748b;margin:8px 0">Unsent reports: 0</div>
             <button class="action-btn" id="clearSavedReportsBtn" onclick="clearSavedReports()" style="background:#64748b">Clear Saved Reports</button>
             <div class="log" id="logBox">Initializing GPS and Camera permissions...</div>
@@ -391,19 +417,9 @@ button.action-btn:hover{background:#10553b}
                 if (log) log.innerText = 'Camera preview active (' + video.videoWidth + ' × ' + video.videoHeight + '). Loading RoadGuard AI model…';
                 aiBadge.innerText = 'Camera active · Loading on-device AI model…';
 
-                if (!ortSession) {
-                    ortSession = await ort.InferenceSession.create('./model/best.onnx', { executionProviders: ['wasm'] });
-                    const outputNames = (ortSession.outputNames || []).map(name => String(name).toLowerCase());
-                    modelFamily = outputNames.some(name => name.includes('dets')) && outputNames.some(name => name.includes('labels'))
-                        ? 'rfdetr'
-                        : 'yolo';
-                }
-
-                aiBadge.innerText = modelFamily === 'rfdetr'
-                    ? 'Edge AI Ready: RoadGuard RF-DETR v7 · processing on this device'
-                    : 'Edge AI Ready: Legacy YOLO · processing on this device';
-                if (log) log.innerText = 'Camera preview active. RoadGuard AI is scanning live frames on this device.';
-                startAutoDetectionLoop();
+                aiBadge.innerText = 'Manual reporting mode · Camera ready';
+                if (log) log.innerText = 'Camera preview active. Take a photo or choose one below, add damage details, then send it to the admin.';
+                // Live AI auto-submission is intentionally disabled until model predictions are validated.
             } catch (err) {
                 console.error('Camera / model initialization error:', err);
                 if (cameraStream) {
@@ -774,6 +790,123 @@ button.action-btn:hover{background:#10553b}
                 if (log) log.innerText = 'Automatic report upload failed: ' + (err.message || 'Network error') + '. It is saved locally; retry when online.';
             } finally {
                 autoReportBusy = false;
+            }
+        }
+
+        function previewManualEvidence() {
+            const input = document.getElementById('manualEvidence');
+            const preview = document.getElementById('manualEvidencePreview');
+            const file = input && input.files && input.files[0];
+            if (!file) {
+                preview.style.display = 'none';
+                preview.removeAttribute('src');
+                return;
+            }
+            if (!file.type || !file.type.startsWith('image/')) {
+                input.value = '';
+                throw new Error('Please choose an image file.');
+            }
+            preview.src = URL.createObjectURL(file);
+            preview.style.display = 'block';
+        }
+
+        document.getElementById('manualEvidence').addEventListener('change', () => {
+            try { previewManualEvidence(); }
+            catch (error) {
+                const status = document.getElementById('manualReportStatus');
+                if (status) status.textContent = error.message;
+            }
+        });
+
+        function compressManualEvidence(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('Could not read the selected photo.'));
+                reader.onload = () => {
+                    const image = new Image();
+                    image.onerror = () => reject(new Error('The selected file is not a valid image.'));
+                    image.onload = () => {
+                        const maxSide = 1600;
+                        const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+                        const shot = document.createElement('canvas');
+                        shot.width = Math.max(1, Math.round(image.width * scale));
+                        shot.height = Math.max(1, Math.round(image.height * scale));
+                        const context = shot.getContext('2d');
+                        context.drawImage(image, 0, 0, shot.width, shot.height);
+                        const dataUrl = shot.toDataURL('image/jpeg', 0.82);
+                        if (dataUrl.length > 10 * 1024 * 1024) {
+                            reject(new Error('Photo is still too large. Choose a smaller image.'));
+                            return;
+                        }
+                        resolve(dataUrl);
+                    };
+                    image.src = reader.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function submitManualRoadReport() {
+            const button = document.getElementById('sendManualReportBtn');
+            const status = document.getElementById('manualReportStatus');
+            const fileInput = document.getElementById('manualEvidence');
+            const file = fileInput && fileInput.files && fileInput.files[0];
+            if (!contributor) {
+                status.textContent = 'Please enter your contributor details first.';
+                return;
+            }
+            if (!file) {
+                status.textContent = 'Please take or select a road damage photo.';
+                return;
+            }
+            if (!Number.isFinite(coords.lat) || !Number.isFinite(coords.lng)) {
+                status.textContent = 'Waiting for GPS. Allow location permission and try again outdoors.';
+                return;
+            }
+            button.disabled = true;
+            button.textContent = 'Sending report…';
+            status.textContent = 'Preparing photo and sending report to admin…';
+            try {
+                const imageBase64 = await compressManualEvidence(file);
+                const damageType = document.getElementById('manualDamageType').value;
+                const severity = document.getElementById('manualSeverity').value;
+                const description = document.getElementById('manualDescription').value.trim() ||
+                    'Manually submitted road damage report by contributor.';
+                const response = await fetch(BACKEND_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({
+                        contributor_name: contributor.name,
+                        contributor_phone: contributor.phone,
+                        contributor_email: contributor.email || '',
+                        contributor_location: contributor.locationText || '',
+                        location_name: document.getElementById('reportLocationName')?.value.trim() || '',
+                        latitude: coords.lat,
+                        longitude: coords.lng,
+                        severity,
+                        description,
+                        damage_type: damageType,
+                        evidence_photos: [{ image_base64: imageBase64, detections: [] }]
+                    })
+                });
+                const raw = await response.text();
+                let result = {};
+                try { result = raw ? JSON.parse(raw) : {}; } catch (_) {}
+                if (!response.ok || !result.success) {
+                    throw new Error(result.message || raw.slice(0, 180) || ('HTTP ' + response.status));
+                }
+                status.textContent = 'Report sent successfully to admin · Status: Pending review.';
+                if (log) log.innerText = 'Manual report submitted: ' + damageType + '. The admin can review it in the reports panel.';
+                fileInput.value = '';
+                document.getElementById('manualEvidencePreview').style.display = 'none';
+                document.getElementById('manualEvidencePreview').removeAttribute('src');
+                document.getElementById('manualDescription').value = '';
+            } catch (error) {
+                status.textContent = 'Report not sent: ' + (error.message || 'Please try again.');
+                if (log) log.innerText = 'Manual report upload failed: ' + (error.message || 'Network error');
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Send Report to Admin';
             }
         }
 
