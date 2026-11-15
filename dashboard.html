@@ -325,7 +325,38 @@ button.action-btn:hover{background:#10553b}
                     throw new Error('ONNX Runtime did not load. Refresh the page and try again.');
                 }
                 aiBadge.innerText = 'Loading RoadGuard AI model…';
-                const session = await ort.InferenceSession.create('./model/best.onnx', {
+                // Fetch the model explicitly so the contributor sees real download progress.
+                // force-cache reuses the server's 24-hour model cache on repeat visits.
+                const response = await fetch('./model/best.onnx', { cache: 'force-cache' });
+                if (!response.ok) throw new Error('Model download failed (HTTP ' + response.status + ').');
+                const total = Number(response.headers.get('content-length')) || 0;
+                let received = 0;
+                let modelBytes;
+                if (response.body && response.body.getReader) {
+                    const reader = response.body.getReader();
+                    const chunks = [];
+                    while (true) {
+                        const part = await reader.read();
+                        if (part.done) break;
+                        chunks.push(part.value);
+                        received += part.value.byteLength;
+                        const mb = (received / 1048576).toFixed(1);
+                        const totalText = total ? ' / ' + (total / 1048576).toFixed(1) + ' MB' : ' MB';
+                        const percent = total ? ' (' + Math.round(received / total * 100) + '%)' : '';
+                        aiBadge.innerText = 'Downloading RoadGuard AI: ' + mb + totalText + percent;
+                        const captureStatus = document.getElementById('captureStatus');
+                        if (captureStatus) captureStatus.textContent = '⬇️ Downloading AI model: ' + mb + totalText + percent;
+                    }
+                    modelBytes = new Uint8Array(received);
+                    let offset = 0;
+                    for (const chunk of chunks) { modelBytes.set(chunk, offset); offset += chunk.byteLength; }
+                } else {
+                    modelBytes = new Uint8Array(await response.arrayBuffer());
+                }
+                aiBadge.innerText = 'Initializing AI in device RAM…';
+                const captureStatus = document.getElementById('captureStatus');
+                if (captureStatus) captureStatus.textContent = '⚙️ Model downloaded. Initializing AI in device RAM…';
+                const session = await ort.InferenceSession.create(modelBytes, {
                     executionProviders: ['wasm'],
                     graphOptimizationLevel: 'all'
                 });
@@ -409,6 +440,23 @@ button.action-btn:hover{background:#10553b}
                 }
 
                 await video.play();
+                // Some Android browsers resolve play() before the first camera frame is painted.
+                if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => {
+                            cleanup();
+                            reject(new Error('Camera opened but no live frames appeared. Allow camera permission and reopen the scanner.'));
+                        }, 10000);
+                        const onFrame = () => { cleanup(); resolve(); };
+                        function cleanup() {
+                            clearTimeout(timeout);
+                            video.removeEventListener('loadeddata', onFrame);
+                            video.removeEventListener('playing', onFrame);
+                        }
+                        video.addEventListener('loadeddata', onFrame, { once: true });
+                        video.addEventListener('playing', onFrame, { once: true });
+                    });
+                }
                 if (log) log.innerText = 'Camera preview active (' + video.videoWidth + ' × ' + video.videoHeight + '). Loading RoadGuard AI model…';
                 aiBadge.innerText = 'Camera active · Loading on-device AI model…';
 
