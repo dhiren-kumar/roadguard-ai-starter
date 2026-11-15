@@ -347,11 +347,12 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
   document.getElementById("closeDetails").addEventListener("click",()=>detailsDialog.close());
   function openSampleReportDetails(r){
     const content=document.getElementById("reportDetailsContent");
-    document.getElementById("detailTitle").textContent="Sample road report · "+r.location_name;
+    document.getElementById("detailTitle").textContent="Road report · "+r.location_name;
     content.replaceChildren();
-    const note=document.createElement("p");note.textContent="DEMO DATA — This is an illustrative sample generated from the photos supplied for the project. It is not a live citizen submission or an independently verified complaint.";note.style.cssText="padding:12px;border:1px solid #f59e0b;border-radius:8px;color:#fcd34d;background:#78350f";content.appendChild(note);
+    const note=document.createElement("p");note.textContent="DEMO REPORT — Example contributor and report for project demonstration; not a genuine public submission.";note.style.cssText="padding:9px 12px;border:1px solid #d97706;border-radius:8px;color:#fcd34d;background:#78350f";content.appendChild(note);
+    if(r.image_url){const photo=document.createElement("img");photo.src=r.image_url;photo.alt="Uploaded GCE KJR Road damage evidence";photo.loading="lazy";photo.style.cssText="display:block;width:100%;max-height:360px;object-fit:contain;border-radius:10px;margin:10px 0";content.appendChild(photo);}
     const meta=document.createElement("div");meta.className="detail-meta";
-    [["Damage type",r.damage_type],["Severity",r.severity],["Status","Sample / not submitted"],["Location",r.location_name],["District",r.district],["Coordinates",r.latitude.toFixed(6)+", "+r.longitude.toFixed(6)],["Evidence photos","User supplied sample photos (not hosted yet)"]].forEach(([label,value])=>{const box=document.createElement("div"),small=document.createElement("small"),strong=document.createElement("strong");small.textContent=label;strong.textContent=value;box.append(small,strong);meta.appendChild(box);});
+    [["Contributor",r.reporter_name],["Damage type",r.damage_type],["Severity",r.severity],["Status","Pending (demo)"],["Location",r.location_name],["District",r.district],["Coordinates",r.latitude.toFixed(6)+", "+r.longitude.toFixed(6)],["Evidence photos",r.image_url?"1 uploaded photo":"None"]].forEach(([label,value])=>{const box=document.createElement("div"),small=document.createElement("small"),strong=document.createElement("strong");small.textContent=label;strong.textContent=value;box.append(small,strong);meta.appendChild(box);});
     content.appendChild(meta);const desc=document.createElement("p");desc.textContent=r.description;content.appendChild(desc);detailsDialog.showModal();
   }
   async function openReportDetails(id){
@@ -409,10 +410,11 @@ footer{border-top:1px solid #334155;padding:18px 4%;color:#94a3b8;font-size:12px
       if(!Array.isArray(reports))throw new Error("Unexpected reports response.");
       // Clearly labelled demonstration reports based on the user's GCE, KJR Road photos.
       // These are frontend-only samples, not submitted/verified public complaints.
+      const samplePhoto="https://res.cloudinary.com/f3cebjoo/image/upload/v1794751153/RoadGuardAI/sample-reports/gce-kjr-road-sample-1.jpg";
       const sampleReports=[
-        {_id:"sample-gce-kjr-001",is_sample:true,damage_type:"Pothole / surface breakup",severity:"high",status:"pending",location_name:"GCE, KJR Road — Sample 1",district:"Keonjhar",latitude:21.645911,longitude:85.582953,timestamp:"2026-11-15T10:00:00.000Z",description:"Demonstration report based on the supplied road photos. Broken pavement with loose aggregate and a rough depression."},
-        {_id:"sample-gce-kjr-002",is_sample:true,damage_type:"Pothole",severity:"medium",status:"pending",location_name:"GCE, KJR Road — Sample 2",district:"Keonjhar",latitude:21.645911,longitude:85.582953,timestamp:"2026-11-15T10:05:00.000Z",description:"Demonstration report showing a damaged and uneven road patch that may affect two-wheelers."},
-        {_id:"sample-gce-kjr-003",is_sample:true,damage_type:"Road surface deterioration",severity:"high",status:"pending",location_name:"GCE, KJR Road — Sample 3",district:"Keonjhar",latitude:21.645911,longitude:85.582953,timestamp:"2026-11-15T10:10:00.000Z",description:"Demonstration report showing a larger area of broken surface and exposed stones."}
+        {_id:"sample-gce-kjr-001",is_sample:true,reporter_name:"Ritik (Demo)",image_url:samplePhoto,damage_type:"Pothole / surface breakup",severity:"high",status:"pending",location_name:"GCE, KJR Road",district:"Keonjhar",latitude:21.645911,longitude:85.582953,timestamp:"2026-11-15T10:00:00.000Z",description:"Demo report using a road-damage photo supplied for the project. Broken pavement with loose aggregate and a rough depression."},
+        {_id:"sample-gce-kjr-002",is_sample:true,reporter_name:"Abhisek (Demo)",image_url:samplePhoto,damage_type:"Pothole",severity:"medium",status:"pending",location_name:"GCE, KJR Road",district:"Keonjhar",latitude:21.645911,longitude:85.582953,timestamp:"2026-11-15T10:05:00.000Z",description:"Demo report using the supplied road-damage evidence. Damaged and uneven road patch that may affect two-wheelers."},
+        {_id:"sample-gce-kjr-003",is_sample:true,reporter_name:"Dhiren (Demo)",image_url:samplePhoto,damage_type:"Road surface deterioration",severity:"high",status:"pending",location_name:"GCE, KJR Road",district:"Keonjhar",latitude:21.645911,longitude:85.582953,timestamp:"2026-11-15T10:10:00.000Z",description:"Demo report using the supplied road-damage evidence, showing broken surface and exposed stones."}
       ];
       allReports=[...sampleReports,...reports];populateDamageTypeFilter(allReports);applyReportFilters();refreshStatistics();
     }catch(error){
