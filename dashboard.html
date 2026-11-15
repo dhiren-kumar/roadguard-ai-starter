@@ -179,17 +179,20 @@ button.action-btn:hover{background:#10553b}
         </div>
 
         <div class="vid-box">
+            <button class="action-btn" id="startCameraBtn" type="button" style="margin:0 0 10px">▶ Start Camera</button>
+            <label for="phoneCameraInput" class="action-btn" style="display:block;text-align:center;margin:0 0 10px;cursor:pointer;background:#2563eb">Use Phone Camera (fallback)</label>
+            <input id="phoneCameraInput" type="file" accept="image/*" capture="environment" style="display:none">
             <video id="cam" autoplay playsinline muted></video>
             <canvas id="bboxOverlay" aria-label="Live AI detection bounding boxes"></canvas>
             <canvas id="canvas" style="display:none;"></canvas>
         </div>
 
         <div class="panel">
-            <div class="ai-badge" id="aiBadge">Camera: starting independently · AI not loaded</div>
+            <div class="ai-badge" id="aiBadge">Camera not started · AI not loaded</div>
             <div style="margin:12px 0;padding:14px;background:#f2f6f2;border:1px solid #dce5de;border-radius:10px;color:#405449">
                 <strong>Road Damage Capture</strong>
                 <p style="font-size:13px;margin:6px 0 10px">Camera works independently. Capture a road photo immediately; load AI only if you want optional on-device analysis.</p>
-                <div id="captureStatus" role="status" aria-live="polite" style="font-size:13px;margin:10px 0;color:#405449">Opening camera…</div>
+                <div id="captureStatus" role="status" aria-live="polite" style="font-size:13px;margin:10px 0;color:#405449">Tap Start Camera. AI does not load automatically.</div>
                 <button class="action-btn" id="captureImageBtn" type="button" onclick="captureAndAnalyzeImage()" disabled style="width:100%;margin:4px 0 8px;opacity:.55">📷 Capture Photo</button>
                 <button class="action-btn" id="analyzeCapturedImagesBtn" type="button" onclick="analyzeCapturedImagesWithAI()" disabled style="background:#2563eb;margin:4px 0 12px">Optional: Load AI & Analyze Photos</button>
                 <div id="capturedEvidenceList" style="display:grid;gap:12px;margin:10px 0"></div>
@@ -271,7 +274,9 @@ button.action-btn:hover{background:#10553b}
                 const status = document.getElementById('autoReportStatus');
                 if (status) status.textContent = 'Opening live camera and loading RoadGuard AI into device RAM…';
                 initGPS();
-                initCameraOnly();
+                aiBadge.innerText = 'Camera not started · AI not loaded';
+                const captureStatus = document.getElementById('captureStatus');
+                if (captureStatus) captureStatus.textContent = 'Tap Start Camera. If live preview does not open, use Use Phone Camera (fallback). AI will not load automatically.';
             } catch (error) {
                 sessionStorage.removeItem('roadguard_contributor');
                 window.location.replace('contributor.html');
@@ -279,6 +284,9 @@ button.action-btn:hover{background:#10553b}
         }
 
         window.onload = () => updateLocalStorageCount();
+
+        document.getElementById('startCameraBtn').addEventListener('click', () => initCameraOnly());
+        document.getElementById('phoneCameraInput').addEventListener('change', captureFromPhoneCamera);
 
 
         function initGPS() {
@@ -882,6 +890,32 @@ button.action-btn:hover{background:#10553b}
                 button.textContent = '📷 Capture Photo';
                 renderCapturedEvidence();
             }
+        }
+
+        async function captureFromPhoneCamera(event) {
+            const file = event.target.files && event.target.files[0];
+            if (!file) return;
+            const status = document.getElementById('captureStatus');
+            if (capturedEvidence.length >= 5) { status.textContent = 'A report can contain up to five photos.'; event.target.value = ''; return; }
+            let sourceUrl = '';
+            try {
+                status.textContent = 'Preparing photo…';
+                sourceUrl = URL.createObjectURL(file);
+                const img = new Image(); img.src = sourceUrl;
+                await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = () => reject(new Error('Could not open the selected photo.')); });
+                const shot = document.createElement('canvas');
+                const scale = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+                shot.width = Math.max(1, Math.round(img.naturalWidth * scale));
+                shot.height = Math.max(1, Math.round(img.naturalHeight * scale));
+                shot.getContext('2d').drawImage(img, 0, 0, shot.width, shot.height);
+                const imageBase64 = shot.toDataURL('image/jpeg', 0.78);
+                capturedEvidence.push({ image_base64: imageBase64, detections: [], captured_at: new Date().toISOString(),
+                    latitude: Number.isFinite(coords.lat) ? coords.lat : null, longitude: Number.isFinite(coords.lng) ? coords.lng : null });
+                renderCapturedEvidence();
+                status.textContent = '✅ Phone photo added. AI is optional; you can send the report now.';
+                aiBadge.innerText = 'Photo captured · AI not loaded';
+            } catch (error) { status.textContent = 'Could not use phone camera photo: ' + (error.message || 'Unknown error'); }
+            finally { if (sourceUrl) URL.revokeObjectURL(sourceUrl); event.target.value = ''; }
         }
 
         async function analyzeCapturedImagesWithAI() {
