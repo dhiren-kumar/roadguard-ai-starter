@@ -82,13 +82,26 @@ a{color:#176b4b}
             return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
         }
         async function api(path, options = {}) {
-            const response = await fetch(path, {
-                ...options,
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(options.headers || {}) }
-            });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.message || 'Request failed.');
-            return data;
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 12000);
+            try {
+                const response = await fetch(path, {
+                    ...options,
+                    signal: controller.signal,
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(options.headers || {}) }
+                });
+                const contentType = response.headers.get('content-type') || '';
+                const data = contentType.includes('application/json')
+                    ? await response.json()
+                    : { message: `Server returned an unexpected response (HTTP ${response.status}).` };
+                if (!response.ok) throw new Error(data.message || 'Request failed.');
+                return data;
+            } catch (error) {
+                if (error.name === 'AbortError') throw new Error('The server took too long to respond. Please retry.');
+                throw error;
+            } finally {
+                clearTimeout(timeout);
+            }
         }
         async function verifyAdmin() {
             if (!token || !currentUser || currentUser.role !== 'admin') {
@@ -109,11 +122,17 @@ a{color:#176b4b}
         }
         let maintenanceStaff=[];
         async function loadMaintenanceStaff(){
-            const result=await api('/api/auth/staff');
-            maintenanceStaff=result.data||[];
-            const list=document.getElementById('staffAccountList');list.replaceChildren();
-            if(!maintenanceStaff.length){list.textContent='No staff accounts created yet.';return;}
-            maintenanceStaff.forEach(person=>{const row=document.createElement('p');row.textContent=person.name+' · '+person.email+(person.locationText?' · '+person.locationText:'');list.appendChild(row);});
+            const list=document.getElementById('staffAccountList');
+            try {
+                const result=await api('/api/auth/staff');
+                maintenanceStaff=result.data||[];
+                list.replaceChildren();
+                if(!maintenanceStaff.length){list.textContent='No staff accounts created yet.';return;}
+                maintenanceStaff.forEach(person=>{const row=document.createElement('p');row.textContent=person.name+' · '+person.email+(person.locationText?' · '+person.locationText:'');list.appendChild(row);});
+            } catch(error) {
+                maintenanceStaff=[];
+                list.textContent='Staff list temporarily unavailable: '+error.message+' Road reports can still be reviewed.';
+            }
         }
         document.getElementById('staffCreateForm').addEventListener('submit',async event=>{
             event.preventDefault();const button=document.getElementById('createStaffButton'),status=document.getElementById('staffCreateStatus');
@@ -215,9 +234,15 @@ a{color:#176b4b}
         }
         (async () => {
             if (await verifyAdmin()) {
-                await loadMaintenanceStaff();
-                await loadAdminReports();
-                setInterval(loadAdminReports, 15000);
+                // Load the report queue immediately; staff-account lookup must never block it.
+                await Promise.all([loadAdminReports(), loadMaintenanceStaff()]);
+                let reportRefreshRunning = false;
+                setInterval(async () => {
+                    if (reportRefreshRunning || document.hidden) return;
+                    reportRefreshRunning = true;
+                    try { await loadAdminReports(); }
+                    finally { reportRefreshRunning = false; }
+                }, 30000);
             }
         })();
     </script>
