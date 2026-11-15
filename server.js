@@ -43,6 +43,11 @@ app.use((req, res, next) => {
     }
     return next();
 });
+// Cache the large on-device AI model so repeat visits do not download ~129 MB again.
+app.use("/model", (req, res, next) => {
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    next();
+});
 app.use(express.static(path.join(__dirname), { dotfiles: "deny", index: "index.html" }));
 
 app.use((req, res) => res.status(404).json({ success: false, message: "Route not found." }));
