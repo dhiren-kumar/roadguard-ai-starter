@@ -23,7 +23,7 @@ function present(report) {
         image_base64: r.imageUrl,
         image_url: r.imageUrl,
         evidence_photos: (r.evidencePhotos && r.evidencePhotos.length ? r.evidencePhotos : [{ imageUrl: r.imageUrl, detections: [] }]).map(p => ({ image_url: p.imageUrl, detections: p.detections || [] })),
-        damage_count: Number.isFinite(r.damageCount) ? r.damageCount : (r.evidencePhotos || []).reduce((n, p) => n + (p.detections || []).length, 0),
+        damage_count: Number.isFinite(r.damageCount) ? r.damageCount : (r.evidencePhotos || []).reduce((n, p) => n + (p.detections || []).filter(d => d.label !== "Normal Road").length, 0),
         contributor_name: r.contributorName || (r.submittedBy && r.submittedBy.name) || "Contributor",
         contributor_phone: r.contributorPhone || "",
         contributor_email: r.contributorEmail || "",
@@ -87,7 +87,7 @@ router.get("/public/:id", async (req, res) => {
             : [{ imageUrl: report.imageUrl, detections: [] }];
         const damageCount = Number.isFinite(report.damageCount)
             ? report.damageCount
-            : photos.reduce((sum, photo) => sum + ((photo.detections || []).length), 0);
+            : photos.reduce((sum, photo) => sum + ((photo.detections || []).filter(d => d.label !== "Normal Road").length), 0);
         res.set("Cache-Control", "public, max-age=15, stale-while-revalidate=45");
         return res.json({
             success: true,
@@ -201,7 +201,8 @@ router.post("/", async (req, res) => {
             }));
             evidencePhotos.push({ imageUrl: uploaded.secure_url, detections });
         }
-        const damageCount = evidencePhotos.reduce((n, p) => n + p.detections.length, 0);
+        // "Normal Road" is a condition classification, not a damage event.
+        const damageCount = evidencePhotos.reduce((n, p) => n + p.detections.filter(d => d.label !== "Normal Road").length, 0);
 
         const report = await Report.create({
             submittedBy: null,
