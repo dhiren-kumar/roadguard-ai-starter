@@ -1,0 +1,29 @@
+{
+  "format": "rfdetr",
+  "architecture": "RF-DETR Medium",
+  "inputSize": 560,
+  "classNames": [
+    "Pothole",
+    "Longitudinal Crack",
+    "Transverse Crack",
+    "Alligator Crack",
+    "Open Manhole",
+    "Normal Road"
+  ],
+  "backgroundClassId": -1,
+  "confidenceThreshold": 0.45,
+  "normalization": {
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ]
+  },
+  "classOrderVerified": false,
+  "note": "Class names are the RoadGuard target classes. Verify their index order against Roboflow dataset version 7 data.yaml before enabling this model."
+}
