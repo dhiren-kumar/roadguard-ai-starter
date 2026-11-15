@@ -345,7 +345,14 @@ button.action-btn:hover{background:#10553b}
         async function initCameraAndModel() {
             if (cameraStarting) return;
             cameraStarting = true;
-            aiBadge.innerText = 'Opening phone camera…';
+
+            // Start downloading and initializing the AI model while the camera permission
+            // and video stream are being prepared, instead of waiting for the camera first.
+            const modelReady = loadRoadGuardModel().then(
+                () => ({ ok: true }),
+                error => ({ ok: false, error })
+            );
+            aiBadge.innerText = 'Opening phone camera and preparing AI…';
             if (log) log.innerText = 'Requesting camera permission. Please allow camera access.';
 
             try {
@@ -410,7 +417,8 @@ button.action-btn:hover{background:#10553b}
                 aiBadge.innerText = 'Camera active · Loading RoadGuard AI into local RAM…';
                 if (log) log.innerText = 'Live camera is ready. Loading the ONNX model into this device memory…';
                 try {
-                    await loadRoadGuardModel();
+                    const modelResult = await modelReady;
+                    if (!modelResult.ok) throw modelResult.error;
                     aiBadge.innerText = 'RoadGuard AI ready · loaded in local RAM';
                     const captureStatus = document.getElementById('captureStatus');
                     if (captureStatus) captureStatus.textContent = '✅ RoadGuard AI loaded in local RAM and ready. You can capture now.';
