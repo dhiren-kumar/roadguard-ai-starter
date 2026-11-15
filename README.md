@@ -55,7 +55,7 @@ Protected API requests use `Authorization: Bearer <token>`. Passwords are hashed
 
 ## Important limitations
 
-- Put your actual trained ONNX model at `model/best.onnx`. The model output layout, class order and preprocessing in the current scanner must match the model you trained; an arbitrary ONNX file will not work.
+- Put the updated trained ONNX model at `model/best.onnx` (the current repository LFS pointer records 38,178,080 bytes, about 36.4 MiB). The browser scanner detects the supported output family at runtime and reports a clear error if the deployment serves a Git LFS pointer instead of the model binary. The model output layout, class order and preprocessing must still match the trained model; an arbitrary ONNX file will not work.
 - The scanner currently keeps captures in browser local storage until the contributor submits them. Browser storage can be cleared and is not a durable offline queue.
 - Report photos are currently stored as base64 strings in MongoDB for prototype simplicity. A production deployment should move photos to object storage and store only a validated URL.
 - Configure email delivery and test the verification link from the deployed service before inviting users.
