@@ -821,7 +821,7 @@ button.action-btn:hover{background:#10553b}
                 );
                 details.textContent = detailsText.length
                     ? 'AI detected: ' + detailsText.join(' · ') + ' · ' + item.detections.length + ' detection(s)'
-                    : 'AI result: No confident damage detected · admin review required';
+                    : (ortSession ? 'AI result: No confident damage detected · admin review required' : 'AI not run yet · photo captured and ready for report');
                 const remove = document.createElement('button');
                 remove.type = 'button';
                 remove.className = 'action-btn';
